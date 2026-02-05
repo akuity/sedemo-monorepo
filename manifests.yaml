@@ -86,9 +86,9 @@ spec:
       prometheus:
         address: http://prometheus-server.prometheus.svc.cluster.local
         query: |
-          rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="demo-dev",method="POST",canary="demo-dev-rollouts-svc-canary-80"}[30s])
+          sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="demo-dev",method="POST",canary="demo-dev-rollouts-svc-canary-80"}[30s]) or vector(.1)) 
           /
-          rate(nginx_ingress_controller_response_duration_seconds_count{namespace="demo-dev",method="POST",canary="demo-dev-rollouts-svc-canary-80"}[30s]) + 1
+          sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="demo-dev",method="POST",canary="demo-dev-rollouts-svc-canary-80"}[30s])  or vector(.1))
 ---
 # Source: deploy/templates/loadgen.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -106,7 +106,7 @@ spec:
               containers:
               - name: loadgen
                 image: jordi/ab
-                command: [ab,"-n20","http://demo-dev.akpdemoapps.link/"]
+                command: [ab,"-n20","-mPOST","http://demo-dev.akpdemoapps.link/"]
               restartPolicy: Never
           backoffLimit: 1
 ---
@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:22-purple"
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:23-orange"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "22-purple"
+              value: "23-orange"
             - name: STAGE
               value: dev
             - name: NAMESPACE
