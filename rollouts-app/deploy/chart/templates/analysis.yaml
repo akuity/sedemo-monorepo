@@ -36,6 +36,6 @@ spec:
       prometheus:
         address: http://prometheus-server.prometheus.svc.cluster.local
         query: |
-          rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="{{  .Release.Namespace }}",method="POST",canary="{{  .Release.Namespace }}-rollouts-svc-canary-80"}[30s])
+          rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="{{  .Release.Namespace }}",method="POST",canary="{{  .Release.Namespace }}-rollouts-svc-canary-80"}[30s]) 
           /
           rate(nginx_ingress_controller_response_duration_seconds_count{namespace="{{  .Release.Namespace }}",method="POST",canary="{{  .Release.Namespace }}-rollouts-svc-canary-80"}[30s]) + 1 
