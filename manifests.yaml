@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:21-yellow"
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:22-purple"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "21-yellow"
+              value: "22-purple"
             - name: STAGE
               value: dev
             - name: NAMESPACE
@@ -159,10 +159,10 @@ spec:
         - setWeight: 10
         - pause:
             duration: 20s 
-        - setWeight: 20
         - analysis:
             templates:
             - templateName: loadgen
+        - setWeight: 20
         - pause:
             duration: 20s 
         - setWeight: 50
