@@ -46,10 +46,10 @@ spec:
         - setWeight: 10
         - pause:
             duration: 20s 
-        - setWeight: 20
         - analysis:
             templates:
             - templateName: loadgen
+        - setWeight: 20
         - pause:
             duration: 20s 
         - setWeight: 50
