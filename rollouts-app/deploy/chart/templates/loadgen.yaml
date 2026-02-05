@@ -13,6 +13,6 @@ spec:
               containers:
               - name: loadgen
                 image: jordi/ab
-                command: [ab,"-n20","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/"]
+                command: [ab,"-n20","-mPOST","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/"]
               restartPolicy: Never
           backoffLimit: 1
