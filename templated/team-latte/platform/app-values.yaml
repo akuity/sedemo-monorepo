@@ -1,0 +1,9 @@
+project:
+  group: sedemo-team-latte
+
+image:
+  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+ingress:
+  custom_prefix: latte
+rollouts:
+  enabled: false
