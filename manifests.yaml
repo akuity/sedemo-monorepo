@@ -1,0 +1,79 @@
+---
+# Source: apps-template/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-stable
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: 'team-latte-app'
+---
+# Source: apps-template/templates/rollout.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "team-latte-app"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "team-latte-app"
+  template:
+    metadata:
+      labels:
+        app: "team-latte-app"
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:25-green"
+          name: "team-latte-app"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "25-green"
+            - name: STAGE
+              value: dev
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            
+          resources:
+            limits:
+              memory: 28Mi
+              cpu: 1m
+            requests:
+              memory: 28Mi
+              cpu: 1m
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+---
+# Source: apps-template/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stable-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - "dev.latte.akpdemoapps.link"
+    secretName: tls-secret
+  rules:
+  - host: "dev.latte.akpdemoapps.link"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-stable
+            port:
+              number: 80
