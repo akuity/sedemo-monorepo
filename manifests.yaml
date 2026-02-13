@@ -29,13 +29,13 @@ spec:
         app: "team-latte-app"
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:25-green"
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:27-yellow"
           name: "team-latte-app"
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "25-green"
+              value: "27-yellow"
             - name: STAGE
               value: dev
             - name: NAMESPACE
