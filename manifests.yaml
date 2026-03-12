@@ -1,0 +1,174 @@
+---
+# Source: deploy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rollouts-svc-stable
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: rollouts-app
+---
+# Source: deploy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rollouts-svc-canary
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: rollouts-app
+---
+# Source: deploy/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stable-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "snow-demo-prod-amer-east.akpdemoapps.link"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: rollouts-svc-stable
+            port:
+              number: 80
+---
+# Source: deploy/templates/analysis.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  metrics:
+  - name: success-rate
+    interval: 15s
+    # NOTE: prometheus queries return results in the form of a vector.
+    # So it is common to access the index 0 of the returned array to obtain the value
+    # If there is no traffic to demo app during rollout we will have empty set.
+    successCondition: len(result) == 0 || result[0] >= 0.95
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus-server.prometheus.svc.cluster.local
+        query: |
+          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-prod-amer-east",status="200",canary="snow-demo-prod-amer-east-rollouts-svc-canary-80"}[30s])) + 1 )
+          /
+          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-prod-amer-east",canary="snow-demo-prod-amer-east-rollouts-svc-canary-80"}[30s])) + 1 )
+---
+# Source: deploy/templates/analysis.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: response-time
+spec:
+  metrics:
+  - name: response-time
+    interval: 15s
+    # NOTE: prometheus queries return results in the form of a vector.
+    # So it is common to access the index 0 of the returned array to obtain the value
+    # If there is no traffic to demo app during rollout we will have empty set.
+    successCondition: len(result) == 0 || result[0] <= 1.5
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus-server.prometheus.svc.cluster.local
+        query: |
+          sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-prod-amer-east",method="POST",canary="snow-demo-prod-amer-east-rollouts-svc-canary-80"}[30s]) or vector(.1)) 
+          /
+          sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-prod-amer-east",method="POST",canary="snow-demo-prod-amer-east-rollouts-svc-canary-80"}[30s])  or vector(.1))
+---
+# Source: deploy/templates/loadgen.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: loadgen
+spec:
+  metrics:
+  - name: load-gen
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: loadgen
+                image: jordi/ab
+                command: [ab,"-n20","-mPOST","http://snow-demo-prod-amer-east.akpdemoapps.link/"]
+              restartPolicy: Never
+          backoffLimit: 1
+---
+# Source: deploy/templates/rollout.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rollouts-app
+  template:
+    metadata:
+      labels:
+        app: rollouts-app
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:28-purple"
+          name: rollouts-app
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "28-purple"
+            - name: STAGE
+              value: prod-amer-east
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  strategy:
+    canary: #Indicates that the rollout should use the Canary strategy
+      canaryService: rollouts-svc-canary  # required
+      stableService: rollouts-svc-stable # required
+      trafficRouting:
+        nginx:
+          stableIngress: stable-ingress
+      analysis:
+        templates:
+        - templateName: success-rate
+        - templateName: response-time
+        startingStep: 3
+      maxSurge: '25%'
+      maxUnavailable: 0
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 20s 
+        - analysis:
+            templates:
+            - templateName: loadgen
+        - setWeight: 20
+        - pause:
+            duration: 20s 
+        - setWeight: 50
+        - pause:
+            duration: 1m 
+        - setWeight: 75
+        - pause:
+            duration: 20s 
+        - setWeight: 100
