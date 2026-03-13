@@ -40,6 +40,7 @@ jobs:
         uses: docker/build-push-action@v4
         id: push
         with:
+          context: beyond-k8s/lambda-app
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
