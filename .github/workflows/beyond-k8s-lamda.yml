@@ -1,12 +1,12 @@
 name: Publish new image
-run-name: Publish new image of rollouts binary
+run-name: Publish new lamda
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'rollouts-app/**'
+      - 'beyond-k8s/lambda/**'
 permissions:
   packages: write
   attestations: write
@@ -16,13 +16,13 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-rollouts-app
+  IMAGE_NAME: ${{ github.repository }}-beyond-k8s-lambda
 
 jobs:
   publish:
     defaults:
       run:
-        working-directory: rollouts-app
+        working-directory: beyond-k8s-lambda
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,34 +35,21 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pick release color
-        run: |
-          COLORS=("red" "green" "blue" "yellow" "purple" "orange")
-          INDEX=$(( $GITHUB_RUN_NUMBER % ${#COLORS[@]} ))
-          echo "APP_COLOR=${COLORS[$INDEX]}" >> $GITHUB_ENV
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         id: push
         with:
-          context: rollouts-app
+          context: beyond-k8s/lambda
           push: true
-          build-args: |
-            COLOR=${{ env.APP_COLOR }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Tag release in git
-        run: |
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
-            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
   cleanup:
     name: ghcr.io cleanup action
     runs-on: ubuntu-latest
@@ -75,4 +62,4 @@ jobs:
           delete-ghost-images: true
           delete-orphaned-images: true
           delete-untagged: true
-          packages: sedemo-monorepo-rollouts-app
+          packages: sedemo-monorepo-beyond-k8s-lambda
