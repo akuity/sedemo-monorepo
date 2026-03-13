@@ -1,0 +1,7 @@
+image:
+  tag: v0.0.2
+
+replicaCount: 2
+
+env:
+  LAMBDA_URL: https://g3hsk4f2owpnowlta6j326mnnq0vzeth.lambda-url.us-west-2.on.aws/
