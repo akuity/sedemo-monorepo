@@ -1,0 +1,19 @@
+{{- if .Values.postSyncJob.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: sleep
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      containers:
+      - name: sleep
+        image: busybox:latest
+        command:
+        - sleep
+        - "10"
+      restartPolicy: Never
+{{- end }}
