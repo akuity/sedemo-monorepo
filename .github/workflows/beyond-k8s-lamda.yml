@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'beyond-k8s/lambda/**'
+      - 'beyond-k8s/lambda-app/**'
 permissions:
   packages: write
   attestations: write
@@ -22,7 +22,7 @@ jobs:
   publish:
     defaults:
       run:
-        working-directory: beyond-k8s-lambda
+        working-directory: beyond-k8s/lambda-app
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -39,7 +39,6 @@ jobs:
         uses: docker/build-push-action@v4
         id: push
         with:
-          context: beyond-k8s/lambda
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
