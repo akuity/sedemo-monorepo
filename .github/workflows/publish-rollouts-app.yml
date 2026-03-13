@@ -40,6 +40,10 @@ jobs:
           COLORS=("red" "green" "blue" "yellow" "purple" "orange")
           INDEX=$(( $GITHUB_RUN_NUMBER % ${#COLORS[@]} ))
           echo "APP_COLOR=${COLORS[$INDEX]}" >> $GITHUB_ENV
+                git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag -a "v${{ github.run_number }}" -m "Release v${{ github.run_number }}"
+            git push origin "v${{ github.run_number }}"
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         id: push
@@ -57,6 +61,13 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - name: Pick release color
+        run: |
+          COLORS=("red" "green" "blue" "yellow" "purp
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
+            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
   cleanup:
     name: ghcr.io cleanup action
     runs-on: ubuntu-latest
