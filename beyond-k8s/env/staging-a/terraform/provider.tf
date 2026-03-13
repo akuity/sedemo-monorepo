@@ -12,7 +12,7 @@ terraform {
   backend "s3" {
     bucket       = "arad-tf-state-files"
     region       = "us-west-2"
-    key          = "kargo-steps/beyond-k8s/staging/terraform.tfstate"
+    key          = "kargo-steps/beyond-k8s/staging-a/terraform.tfstate"
     use_lockfile = true
   }
 }
