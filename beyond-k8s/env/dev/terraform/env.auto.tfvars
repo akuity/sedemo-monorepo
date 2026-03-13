@@ -1,2 +1,2 @@
-image_uri = "541216676946.dkr.ecr.us-west-2.amazonaws.com/kargo-dev/test-app:0.6.0"
+image_uri = "218691292270.dkr.ecr.us-west-2.amazonaws.com/sedemo/beyond-k8s-lambda:0.0.1"
 env_name  = "dev"
