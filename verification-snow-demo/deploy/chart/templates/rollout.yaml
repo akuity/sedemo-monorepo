@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-app
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app: rollouts-app
+  template:
+    metadata:
+      labels:
+        app: rollouts-app
+    spec:
+      containers:
+        - image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          name: rollouts-app
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "{{.Values.image.tag}}"
+            - name: STAGE
+              value: {{.Values.kargo.stage}}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  strategy:
+    canary: #Indicates that the rollout should use the Canary strategy
+      canaryService: rollouts-svc-canary  # required
+      stableService: rollouts-svc-stable # required
+      trafficRouting:
+        nginx:
+          stableIngress: stable-ingress
+      analysis:
+        templates:
+        - templateName: success-rate
+        - templateName: response-time
+        startingStep: 3
+      maxSurge: '25%'
+      maxUnavailable: 0
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 10s 
+        - analysis:
+            templates:
+            - templateName: loadgen
+        - setWeight: 20
+        - pause:
+            duration: 10s 
+        - setWeight: 50
+        - pause:
+            duration: 10s 
+        - setWeight: 75
+        - pause:
+            duration: 10s 
+        - setWeight: 100
