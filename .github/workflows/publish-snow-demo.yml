@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - 'verification-snow-demo/**'
+      - '.github/workflows/publish-snow-demo.yml'
 permissions:
   packages: write
   attestations: write
