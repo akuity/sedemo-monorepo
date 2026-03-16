@@ -45,17 +45,17 @@ spec:
       steps:
         - setWeight: 10
         - pause:
-            duration: 10s 
+            duration: 2s 
         - analysis:
             templates:
             - templateName: loadgen
         - setWeight: 20
         - pause:
-            duration: 10s 
+            duration: 2s 
         - setWeight: 50
         - pause:
-            duration: 10s 
+            duration: 2s 
         - setWeight: 75
         - pause:
-            duration: 10s 
+            duration: 2s 
         - setWeight: 100
