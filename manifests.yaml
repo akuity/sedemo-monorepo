@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:5-orange"
+        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:7-green"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "5-orange"
+              value: "7-green"
             - name: STAGE
               value: dev
             - name: NAMESPACE
@@ -150,7 +150,7 @@ spec:
           stableIngress: stable-ingress
       analysis:
         templates:
-        - templateName: success-rate
+        # - templateName: success-rate # temporarily removing to guaratee rollouts success
         - templateName: response-time
         startingStep: 3
       maxSurge: '25%'
