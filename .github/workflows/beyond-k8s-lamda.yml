@@ -16,8 +16,11 @@ permissions:
   pull-requests: write
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: 218691292270.dkr.ecr.us-west-2.amazonaws.com/sedemo/beyond-k8s-lambda
   IMAGE_NAME: ${{ github.repository }}-beyond-k8s-lambda
+  AWS_REGION: us-west-2
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ECR_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ECR_SECRET_ACCESS_KEY }}
 
 jobs:
   publish:
@@ -30,12 +33,9 @@ jobs:
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to Amazon ECR Private
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         id: push
@@ -43,24 +43,12 @@ jobs:
           context: beyond-k8s/lambda-app
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:0.1.${{ github.run_number }}
+            ${{ env.REGISTRY }}:latest
+            ${{ env.REGISTRY }}:0.1.${{ github.run_number }}
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          subject-name: ${{ env.REGISTRY }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-  cleanup:
-    name: ghcr.io cleanup action
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - uses: dataaxiom/ghcr-cleanup-action@v1
-        with:
-          keep-n-tagged: 5
-          delete-ghost-images: true
-          delete-orphaned-images: true
-          delete-untagged: true
-          packages: sedemo-monorepo-beyond-k8s-lambda
+  
