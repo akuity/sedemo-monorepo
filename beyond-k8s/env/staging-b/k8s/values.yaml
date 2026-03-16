@@ -4,4 +4,4 @@ image:
 replicaCount: 1
 
 env:
-  LAMBDA_URL: https://oux76hf5typigu62pe4kfvoao40aictg.lambda-url.us-west-2.on.aws/
+  LAMBDA_URL: https://dbg7o6sqoegfhvb7fifeqpga4a0tgzmi.lambda-url.us-west-2.on.aws/
