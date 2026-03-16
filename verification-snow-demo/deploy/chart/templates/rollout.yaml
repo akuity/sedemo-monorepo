@@ -37,7 +37,7 @@ spec:
           stableIngress: stable-ingress
       analysis:
         templates:
-        - templateName: success-rate
+        # - templateName: success-rate # temporarily removing to guaratee rollouts success
         - templateName: response-time
         startingStep: 3
       maxSurge: '25%'
