@@ -22,7 +22,7 @@ jobs:
   publish:
     defaults:
       run:
-        working-directory: snow-demo
+        working-directory: verification-snow-demo
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -44,7 +44,7 @@ jobs:
         uses: docker/build-push-action@v4
         id: push
         with:
-          context: snow-demo
+          context: verification-snow-demo
           push: true
           build-args: |
             COLOR=${{ env.APP_COLOR }}
