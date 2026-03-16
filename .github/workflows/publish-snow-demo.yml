@@ -58,12 +58,6 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Tag release in git
-        run: |
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
-            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
   cleanup:
     name: ghcr.io cleanup action
     runs-on: ubuntu-latest
