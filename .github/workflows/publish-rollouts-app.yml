@@ -41,6 +41,17 @@ jobs:
           COLORS=("red" "green" "blue" "yellow" "purple" "orange")
           INDEX=$(( $GITHUB_RUN_NUMBER % ${#COLORS[@]} ))
           echo "APP_COLOR=${COLORS[$INDEX]}" >> $GITHUB_ENV
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          labels: |
+            org.opencontainers.image.title=Rollouts App
+            org.opencontainers.image.description=A visualization app for Kubernetes progressive rollouts
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         id: push
@@ -49,12 +60,7 @@ jobs:
           push: true
           build-args: |
             COLOR=${{ env.APP_COLOR }}
-          annotations: |
-            org.opencontainers.image.title=Rollouts App
-            org.opencontainers.image.description=A visualization app for Kubernetes progressive rollouts
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
-            org.opencontainers.image.url=${{ github.repositoryUrl }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
