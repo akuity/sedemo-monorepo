@@ -50,14 +50,14 @@ jobs:
           build-args: |
             COLOR=${{ env.APP_COLOR }}
           annotations: |
-            org.opencontainers.image.title=Rollouts App-Bad Release
+            org.opencontainers.image.title=Rollouts App
             org.opencontainers.image.description=A visualization app for Kubernetes progressive rollouts
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.run_number }}-bad
+            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-bad
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
@@ -68,8 +68,8 @@ jobs:
         run: |
             git config --local user.email "action@github.com"
             git config --local user.name "GitHub Action"
-            git tag -a "${{ github.run_number }}-bad" -m "Release ${{ github.run_number }}-bad"
-            git push origin "${{ github.run_number }}-bad"
+            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
+            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
   cleanup:
     name: ghcr.io cleanup action
     runs-on: ubuntu-latest
