@@ -50,17 +50,17 @@ jobs:
           build-args: |
             COLOR=${{ env.APP_COLOR }}
           labels: |
-            org.opencontainers.image.title Rollouts App
-            org.opencontainers.image.description A visualization app for Kubernetes progressive rollouts
-            org.opencontainers.image.revision ${{ github.sha }}
-            org.opencontainers.image.version ${{ github.run_number }}-${{ env.APP_COLOR }}
-            org.opencontainers.image.url ${{ github.repositoryUrl }}
+            org.opencontainers.image.title="Rollouts App"
+            org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
           annotations: |
-            manifest:org.opencontainers.image.title Rollouts App
-            manifest:org.opencontainers.image.description A visualization app for Kubernetes progressive rollouts
-            manifest:org.opencontainers.image.revision ${{ github.sha }}
-            manifest:org.opencontainers.image.version ${{ github.run_number }}-${{ env.APP_COLOR }}
-            manifest:org.opencontainers.image.url ${{ github.repositoryUrl }}
+            index,manifest:org.opencontainers.image.title="Rollouts App"
+            index,manifest:org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            index,manifest:org.opencontainers.image.url=${{ github.repositoryUrl }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
