@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - 'rollouts-app/**'
+      - '.github/workflows/publish-rollouts-app.yml'
 permissions:
   packages: write
   attestations: write
@@ -41,16 +42,22 @@ jobs:
           INDEX=$(( $GITHUB_RUN_NUMBER % ${#COLORS[@]} ))
           echo "APP_COLOR=${COLORS[$INDEX]}" >> $GITHUB_ENV
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         id: push
         with:
           context: rollouts-app
           push: true
           build-args: |
             COLOR=${{ env.APP_COLOR }}
+          annotations: |
+            org.opencontainers.image.title=Rollouts App-Bad Release
+            org.opencontainers.image.description=A visualization app for Kubernetes progressive rollouts
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.run_number }}-bad
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-bad
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
@@ -61,8 +68,8 @@ jobs:
         run: |
             git config --local user.email "action@github.com"
             git config --local user.name "GitHub Action"
-            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
-            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
+            git tag -a "${{ github.run_number }}-bad" -m "Release ${{ github.run_number }}-bad"
+            git push origin "${{ github.run_number }}-bad"
   cleanup:
     name: ghcr.io cleanup action
     runs-on: ubuntu-latest
