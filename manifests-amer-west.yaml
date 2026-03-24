@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:8-blue"
+        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:7-green"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "8-blue"
+              value: "7-green"
             - name: STAGE
               value: prod-amer-west
             - name: NAMESPACE
