@@ -134,7 +134,7 @@ spec:
             - name: SEMVER
               value: "1-green"
             - name: STAGE
-              value: staging-west
+              value: staging
             - name: NAMESPACE
               valueFrom:
                 fieldRef:
