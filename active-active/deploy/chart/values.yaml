@@ -13,3 +13,4 @@ kargo:
 
 ingress:
   root_domain: ha.k8s.orb.local
+  sub_domain: dev-west.ha

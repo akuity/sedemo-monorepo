@@ -5,7 +5,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: "{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}"
+  - host: "{{ .Values.ingress.sub_domain }}.{{ .Values.ingress.root_domain }}"
     http:
       paths:
       - pathType: Prefix
