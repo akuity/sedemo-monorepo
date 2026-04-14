@@ -1,4 +1,4 @@
-# Argo Rollouts Demo Application
+# Argo Rollouts Demo Application - HA
 
 This repo contains the [Argo Rollouts](https://github.com/argoproj/argo-rollouts) demo application source code and examples. It demonstrates the
 various deployment strategies and progressive delivery features of Argo Rollouts.
