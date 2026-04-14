@@ -126,7 +126,7 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:1-green"
+        - image: "ghcr.io/akuity/sedemo-monorepo-active-active:1-green"
           name: rollouts-app
           ports:
             - containerPort: 8080
