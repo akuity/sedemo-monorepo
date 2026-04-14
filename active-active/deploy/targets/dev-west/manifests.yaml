@@ -35,7 +35,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: "active-active-dev.akpdemoapps.link"
+  - host: "dev-west.ha.akpdemoapps.link"
     http:
       paths:
       - pathType: Prefix
