@@ -1,0 +1,93 @@
+name: Publish new active-active app image
+run-name: Publish new image of rollouts binary
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'active-active/**'
+      - '.github/workflows/publish-active-active-app.yml'
+permissions:
+  packages: write
+  attestations: write
+  contents: write
+  id-token: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-active-active
+
+jobs:
+  publish:
+    defaults:
+      run:
+        working-directory: active-active
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pick release color
+        run: |
+          COLORS=("red" "green" "blue" "yellow" "purple" "orange")
+          INDEX=$(( $GITHUB_RUN_NUMBER % ${#COLORS[@]} ))
+          echo "APP_COLOR=${COLORS[$INDEX]}" >> $GITHUB_ENV\
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        id: push
+        with:
+          context: active-active
+          push: true
+          build-args: |
+            COLOR=${{ env.APP_COLOR }}
+          labels: |
+            org.opencontainers.image.title="Rollouts App"
+            org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title="Rollouts App"
+            index,manifest:org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            index,manifest:org.opencontainers.image.url=${{ github.repositoryUrl }}
+            index,manifest:org.opencontainers.image.source=${{ github.repositoryUrl }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Tag release in git
+        run: |
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag -a "${{ github.run_number }}-${{ env.APP_COLOR }}" -m "Release ${{ github.run_number }}-${{ env.APP_COLOR }}"
+            git push origin "${{ github.run_number }}-${{ env.APP_COLOR }}"
+  cleanup:
+    name: ghcr.io cleanup action
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          keep-n-tagged: 5
+          delete-ghost-images: true
+          delete-orphaned-images: true
+          delete-untagged: true
+          packages: sedemo-monorepo-active-active
