@@ -43,19 +43,15 @@ spec:
       maxSurge: '25%'
       maxUnavailable: 0
       steps:
-        - setWeight: 10
+        - setWeight: 30
         - pause:
             duration: 20s 
         - analysis:
             templates:
             - templateName: loadgen
-        - setWeight: 20
-        - pause:
-            duration: 20s 
         - setWeight: 50
         - pause:
-            duration: 1m 
-        - setWeight: 75
+            duration: 30s
+        - setWeight: 100
         - pause:
             duration: 20s 
-        - setWeight: 100
