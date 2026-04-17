@@ -4,7 +4,7 @@
     "containerDefinitions": [
         {
             "name": "fargate-app", 
-            "image": "public.ecr.aws/docker/library/httpd:latest", 
+            "image": "ghcr.io/akuity/sedemo-monorepo-fargate-app:latest", 
             "portMappings": [
                 {
                     "containerPort": 80, 
