@@ -4,7 +4,7 @@
     "containerDefinitions": [
         {
             "name": "fargate-app", 
-            "image": "ghcr.io/akuity/sedemo-monorepo-fargate-app:latest", 
+            "image": "ghcr.io/akuity/sedemo-monorepo-fargate-app:0.1.2", 
             "portMappings": [
                 {
                     "containerPort": 80, 
@@ -27,4 +27,4 @@
     ], 
     "cpu": "64", 
     "memory": "128"
-,"containerDefinitions[0]":{"image":"ghcr.io/akuity/sedemo-monorepo-fargate-app:0.1.2"}}
+}
