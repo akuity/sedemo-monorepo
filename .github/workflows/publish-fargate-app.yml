@@ -1,0 +1,82 @@
+name: Publish fargate image
+run-name: Publish new image of fargate binary
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'beyond-k8s/fargate/container/**'
+      - '.github/workflows/publish-fargate-app.yml'
+permissions:
+  packages: write
+  attestations: write
+  contents: write
+  id-token: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-fargate-app
+
+jobs:
+  publish:
+    defaults:
+      run:
+        working-directory: beyond-k8s/fargate/container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        id: push
+        with:
+          context: rollouts-app
+          push: true
+          build-args: |
+            VERSION=1.0.${{ github.run_number }}
+          labels: |
+            org.opencontainers.image.title="Fargate App"
+            org.opencontainers.image.description="A simple web server for Fargate"
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title="Fargate App"
+            index,manifest:org.opencontainers.image.description="A simple web server for Fargate"
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.version=${{ env.VERSION }}
+            index,manifest:org.opencontainers.image.url=${{ github.repositoryUrl }}
+            index,manifest:org.opencontainers.image.source=${{ github.repositoryUrl }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ env.VERSION }}
+      - name: Tag release in git
+        run: |
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag -a "${{ env.VERSION }}" -m "Release ${{ env.VERSION }}"
+            git push origin "${{ env.VERSION }}"
+  cleanup:
+    name: ghcr.io cleanup action
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          keep-n-tagged: 5
+          delete-ghost-images: true
+          delete-orphaned-images: true
+          delete-untagged: true
+          packages: sedemo-monorepo-fargate-app
