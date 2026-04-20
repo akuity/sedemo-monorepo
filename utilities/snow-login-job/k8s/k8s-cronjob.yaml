@@ -2,7 +2,6 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: snow-keepalive
-  namespace: default
 spec:
   # Runs at 08:00 UTC every day
   schedule: "0 8 * * *"
