@@ -19,7 +19,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: snow-keepalive
-              image: your-registry/snow-keepalive:latest
+              image: ghcr.io/akuity/sedemo-monorepo-snow-login-job:latest
               imagePullPolicy: Always
               env:
                 - name: SNOW_USERNAME

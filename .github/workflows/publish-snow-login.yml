@@ -15,7 +15,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-snow-login-job
+  IMAGE_NAME: ${{ github.repository }}-snow-poke
 
 jobs:
   publish:
@@ -54,4 +54,4 @@ jobs:
           delete-ghost-images: true
           delete-orphaned-images: true
           delete-untagged: true
-          packages: sedemo-monorepo-kargo-cred-sync-job
+          packages: ${{ env.IMAGE_NAME}}
