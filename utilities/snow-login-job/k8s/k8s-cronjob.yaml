@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: snow-keepalive
+  namespace: default
+spec:
+  # Runs at 08:00 UTC every day
+  schedule: "0 8 * * *"
+  # Keep the last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  # If a previous job is still running, skip the new one
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      # Retry up to 2 times on failure before giving up
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: snow-keepalive
+              image: your-registry/snow-keepalive:latest
+              imagePullPolicy: Always
+              env:
+                - name: SNOW_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: snow-credentials
+                      key: username
+                - name: SNOW_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: snow-credentials
+                      key: password
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"

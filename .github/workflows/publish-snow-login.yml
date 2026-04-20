@@ -1,11 +1,11 @@
 name: Publish Utilities Images
-run-name: Publish new image of demo utilities
+run-name: SNOW Keep Alive
 on:
   push:
     branches:
       - main
     paths:
-      - 'utilities/kargo-cred-sync-job/**'
+      - 'utilities/snow-login-job/**'
 permissions:
   packages: write
   attestations: write
@@ -15,13 +15,13 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-kargo-cred-sync-job
+  IMAGE_NAME: ${{ github.repository }}-snow-login-job
 
 jobs:
   publish:
     defaults:
       run:
-        working-directory: utilities/kargo-cred-sync-job
+        working-directory: utilities/snow-login-job
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -38,7 +38,7 @@ jobs:
         uses: docker/build-push-action@v4
         id: push
         with:
-          context: utilities/kargo-cred-sync-job
+          context: utilities/snow-login-job
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
