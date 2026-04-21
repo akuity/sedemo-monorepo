@@ -2,28 +2,23 @@
 """
 ServiceNow Developer Portal - Daily Keep-Alive Login
 
-SAML SP-initiated flow with Okta Classic authn API:
+Verified against browser HAR capture. Critical detail:
+every post-login API call requires X-UserToken, which is the g_ck
+value embedded in the /dev.do page HTML. Without it, API calls
+receive no authenticated response and the instance never wakes.
 
+Flow:
   1. GET  /userlogin.do  ->  302  ->  /login_with_sso.do
-         Seeds SN session cookies (JSESSIONID, glide_user_route, etc.)
-
-  2. GET  /login_with_sso.do  ->  200
-         Auto-submit HTML form containing SAMLRequest + RelayState.
-         Parse but do NOT submit yet — we need the Okta app SSO URL.
-
-  3. POST https://ssosignon.servicenow.com/api/v1/authn
-         Body: { username, password }
-         Response: { status: "SUCCESS", sessionToken: "..." }
-
-  4. GET  <okta_saml_sso_url>?sessionToken=<token>
-         Okta validates the token and returns an auto-submit HTML form
-         containing SAMLResponse + RelayState.
-
-  5. POST SAMLResponse to ServiceNow ACS URL  (https://.../navpage.do)
-         SN validates the assertion and sets glide_user / glide_user_session.
-
-  6. GET  /api/snc/v1/dev/user_session_info
-         Hydrates the developer portal session.
+  2. GET  /login_with_sso.do           (SAML auto-submit form)
+  3. POST SAMLRequest to Okta          (seeds Okta session cookies)
+  4. POST /api/v1/authn                -> sessionToken
+  5. GET  <saml_sso_url>?sessionToken= -> SAMLResponse form
+  6. POST SAMLResponse to /navpage.do  -> 302 -> /dev.do
+  7. GET  /dev.do                      -> extract g_ck as X-UserToken
+  8. GET  user_session_info            (confirm login)
+  9. GET  instanceInfo?direct_wake_up=true    (triggers wake when hibernating)
+ 10. POST instance_backup_validation   (wake signal #2)
+ 11. GET  check_instance_awake         (wake signal #3 - confirmed in HAR)
 """
 
 import os
@@ -41,19 +36,11 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+SN_BASE = "https://developer.servicenow.com"
 
 START_URL = (
-    "https://developer.servicenow.com/userlogin.do"
+    f"{SN_BASE}/userlogin.do"
     "?relayState=https%3A%2F%2Fdeveloper.servicenow.com%2Fdev.do%5Bobject%20Object%5D"
-)
-
-SESSION_HYDRATE = (
-    "https://developer.servicenow.com/api/snc/v1/dev/user_session_info"
-    "?sysparm_data=%7B%22action%22%3A%22dev.user.session%22"
-    "%2C%22data%22%3A%7B%22sysparm_okta%22%3Atrue%7D%7D"
 )
 
 USERNAME = os.environ["SNOW_USERNAME"]
@@ -70,31 +57,22 @@ BROWSER_HEADERS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def die(msg):
     log.error(msg)
     sys.exit(1)
 
 
 def parse_auto_submit_form(html, base_url):
-    """
-    Parse an HTML page that contains a single JS auto-submitting <form>.
-    Returns (action_url, {name: value}) for all <input> fields.
-    """
     soup = BeautifulSoup(html, "html.parser")
     form = soup.find("form")
     if not form:
-        die("Expected an auto-submit form but found none.\n" + html[:500])
+        die("Expected an auto-submit form but found none.\n" + html[:400])
     action = urljoin(base_url, form.get("action", ""))
     fields = {
         inp["name"]: inp.get("value", "")
         for inp in form.find_all("input")
         if inp.get("name")
     }
-    log.debug("Form action: %s  fields: %s", action, list(fields.keys()))
     return action, fields
 
 
@@ -103,47 +81,61 @@ def okta_base(url):
     return f"{p.scheme}://{p.netloc}"
 
 
-# ---------------------------------------------------------------------------
-# Step 1+2: Fetch the SAML auto-submit form from ServiceNow
-# ---------------------------------------------------------------------------
+def api_headers(user_token):
+    """Headers used on every authenticated SN API call (confirmed from HAR)."""
+    return {
+        **BROWSER_HEADERS,
+        "Accept": "application/json, text/plain, */*",
+        "Referer": f"{SN_BASE}/dev.do",
+        "X-UserToken": user_token,
+    }
 
+
+# ---------------------------------------------------------------------------
+# Steps 1+2: SN login -> SAML auto-submit form
+# ---------------------------------------------------------------------------
 def fetch_saml_form(session):
-    """
-    Follow the SN login URL through the 302 redirect to /login_with_sso.do.
-    Parse the auto-submit form to get:
-      - saml_sso_url : the Okta SAML SSO endpoint (form action)
-      - saml_fields  : dict of hidden inputs (SAMLRequest, RelayState)
-    """
     log.info("Step 1+2 — fetching SAML form")
     resp = session.get(START_URL, headers=BROWSER_HEADERS, timeout=30)
     if resp.status_code != 200:
-        die(f"Expected 200 from login_with_sso.do, got {resp.status_code}")
-
-    log.info("Landed on: %s", resp.url)
-    saml_sso_url, fields = parse_auto_submit_form(resp.text, resp.url)
-
+        die(f"Expected 200, got {resp.status_code}")
+    action, fields = parse_auto_submit_form(resp.text, resp.url)
     if "SAMLRequest" not in fields:
-        die(f"No SAMLRequest in form. Fields present: {list(fields.keys())}")
-
-    log.info("Okta SAML SSO URL: %s", saml_sso_url)
-    return saml_sso_url, fields
+        die(f"No SAMLRequest in form. Fields: {list(fields.keys())}")
+    log.info("SAML POST target: %s", action)
+    return action, fields
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Authenticate with Okta classic /api/v1/authn
+# Step 3: POST SAMLRequest to Okta (seeds Okta cookies; we ignore the page)
 # ---------------------------------------------------------------------------
-
-def okta_authn(session, okta_base_url):
-    """
-    POST credentials to the Okta classic authn endpoint.
-    On success Okta returns:
-        { "status": "SUCCESS", "sessionToken": "20111...Uaj" }
-    """
-    authn_url = f"{okta_base_url}/api/v1/authn"
-    log.info("Step 3 — Okta authn POST to %s", authn_url)
-
+def post_saml_to_okta(session, saml_url, fields):
+    log.info("Step 3 — POSTing SAMLRequest to Okta")
     resp = session.post(
-        authn_url,
+        saml_url,
+        data=fields,
+        headers={
+            **BROWSER_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": SN_BASE + "/",
+        },
+        allow_redirects=True,
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        die(f"Expected 200 from Okta, got {resp.status_code}")
+    log.info("Okta page: %s", resp.url)
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Okta classic authn -> sessionToken
+# ---------------------------------------------------------------------------
+def okta_authn(session, okta_base_url):
+    url = f"{okta_base_url}/api/v1/authn"
+    log.info("Step 4 — Okta authn POST")
+    resp = session.post(
+        url,
         json={"username": USERNAME, "password": PASSWORD},
         headers={
             **BROWSER_HEADERS,
@@ -153,96 +145,51 @@ def okta_authn(session, okta_base_url):
         },
         timeout=30,
     )
-
-    log.info("Authn status: %s", resp.status_code)
-
     if resp.status_code != 200:
-        # Surface a clean error — avoid printing the password back
         try:
             err = resp.json()
-            die(
-                f"Okta authn failed ({resp.status_code}): "
-                f"{err.get('errorSummary', resp.text[:300])}"
-            )
+            die(f"Okta authn failed ({resp.status_code}): {err.get('errorSummary', resp.text[:300])}")
         except ValueError:
             die(f"Okta authn failed ({resp.status_code}): {resp.text[:300]}")
 
     data = resp.json()
     status = data.get("status")
     log.info("Okta authn status: %s", status)
-
-    if status == "MFA_ENROLL":
-        die(
-            "Okta requires MFA enrolment. "
-            "Log in interactively once to complete enrolment, then retry."
-        )
-
     if status == "MFA_REQUIRED":
-        die(
-            "Okta is requiring MFA for this account. "
-            "This keep-alive script only supports password authentication. "
-            "Disable MFA for this account or use an app password if available."
-        )
-
+        die("MFA is required — not supported by this script.")
     if status != "SUCCESS":
-        die(f"Okta authn returned unexpected status: {status}\n{json.dumps(data, indent=2)}")
-
-    session_token = data.get("sessionToken")
-    if not session_token:
-        die(f"Okta authn succeeded but no sessionToken in response: {data}")
-
-    log.info("sessionToken obtained (%.12s...)", session_token)
-    return session_token
+        die(f"Unexpected Okta authn status: {status}")
+    token = data.get("sessionToken")
+    if not token:
+        die("No sessionToken in Okta authn response.")
+    log.info("sessionToken obtained")
+    return token
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Exchange sessionToken for SAMLResponse via the SAML SSO URL
+# Step 5: Exchange sessionToken for SAMLResponse
 # ---------------------------------------------------------------------------
-
 def exchange_session_token(session, saml_sso_url, session_token):
-    """
-    GET the Okta SAML SSO URL with the sessionToken appended as a query param.
-    Okta validates the token and returns an HTML page with an auto-submit
-    form that contains the SAMLResponse destined for the SN ACS URL.
-    """
-    # Append sessionToken — Okta expects it as a query parameter
     url = f"{saml_sso_url}?sessionToken={session_token}"
-    log.info("Step 4 — exchanging sessionToken via %s", saml_sso_url)
-
+    log.info("Step 5 — exchanging sessionToken")
     resp = session.get(
         url,
-        headers={
-            **BROWSER_HEADERS,
-            "Referer": okta_base(saml_sso_url),
-        },
+        headers={**BROWSER_HEADERS, "Referer": okta_base(saml_sso_url)},
         allow_redirects=True,
         timeout=30,
     )
-
-    log.info("Token exchange landed on: %s  (status %s)", resp.url, resp.status_code)
-
-    if resp.status_code != 200:
-        die(f"Session token exchange failed: {resp.status_code}\n{resp.text[:500]}")
-
-    if "SAMLResponse" not in resp.text:
-        log.debug("Token exchange response HTML:\n%.2000s", resp.text)
-        die("Expected a SAMLResponse form from Okta but none found.")
-
+    if resp.status_code != 200 or "SAMLResponse" not in resp.text:
+        die(f"Expected SAMLResponse form, got {resp.status_code} at {resp.url}")
+    log.info("SAMLResponse form obtained")
     return resp
 
 
 # ---------------------------------------------------------------------------
-# Step 5: POST SAMLResponse back to ServiceNow ACS
+# Step 6: POST SAMLResponse to SN ACS -> lands on /dev.do
 # ---------------------------------------------------------------------------
-
 def post_saml_response(session, okta_resp):
-    """
-    Parse the SAMLResponse auto-submit form from Okta's response and POST
-    it to the ServiceNow Assertion Consumer Service URL.
-    """
     action, fields = parse_auto_submit_form(okta_resp.text, okta_resp.url)
-    log.info("Step 5 — POSTing SAMLResponse to SN ACS: %s", action)
-
+    log.info("Step 6 — POSTing SAMLResponse to SN ACS: %s", action)
     resp = session.post(
         action,
         data=fields,
@@ -254,80 +201,184 @@ def post_saml_response(session, okta_resp):
         allow_redirects=True,
         timeout=30,
     )
-
-    log.info("ACS POST result: %s  final URL: %s", resp.status_code, resp.url)
-
-    # SN will 302 to /navpage.do or /dev.do after a successful assertion
-    if "servicenow.com" not in resp.url:
-        log.warning("Unexpected final URL after ACS POST: %s", resp.url)
-
+    log.info("ACS result: %s  final URL: %s", resp.status_code, resp.url)
     return resp
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Hydrate the ServiceNow dev-portal session
+# Step 7: GET /dev.do -> extract g_ck as X-UserToken
+# The browser always does this before any API call.
+# g_ck is required as X-UserToken on every authenticated API request.
 # ---------------------------------------------------------------------------
-
-def hydrate_session(session):
-    log.info("Step 6 — hydrating SN dev-portal session")
+def fetch_dev_portal(session):
+    log.info("Step 7 — fetching /dev.do to obtain g_ck (X-UserToken)")
     resp = session.get(
-        SESSION_HYDRATE,
-        headers={
-            **BROWSER_HEADERS,
-            "Accept": "application/json",
-            "Referer": "https://developer.servicenow.com/",
-        },
+        f"{SN_BASE}/dev.do",
+        headers={**BROWSER_HEADERS, "Referer": SN_BASE + "/"},
         timeout=30,
     )
+    if resp.status_code != 200:
+        die(f"GET /dev.do returned {resp.status_code}")
 
-    log.info("Hydration response: %s", resp.status_code)
+    m = re.search(r'g_ck\s*=\s*["\']([a-f0-9]+)["\']', resp.text)
+    if not m:
+        log.debug("/dev.do HTML snippet:\n%.1000s", resp.text)
+        die("Could not extract g_ck from /dev.do")
 
+    g_ck = m.group(1)
+    log.info("g_ck (X-UserToken) obtained: %.12s...", g_ck)
+    return g_ck
+
+
+# ---------------------------------------------------------------------------
+# Step 8: user_session_info — confirm login
+# ---------------------------------------------------------------------------
+def confirm_session(session, user_token):
+    log.info("Step 8 — confirming session")
+    url = (
+        f"{SN_BASE}/api/snc/v1/dev/user_session_info"
+        "?sysparm_data=%7B%22action%22%3A%22dev.user.session%22"
+        "%2C%22data%22%3A%7B%22sysparm_okta%22%3Atrue%7D%7D"
+    )
+    resp = session.get(url, headers=api_headers(user_token), timeout=30)
+    log.info("user_session_info: %s", resp.status_code)
     if resp.status_code == 200:
-        try:
-            result = resp.json().get("result", {})
-            user = (
-                result.get("user_name")
-                or result.get("login")
-                or result.get("email")
-                or result.get("display_name")
-            )
-            log.info("Session active — logged in as: %s", user or "(user key not in response)")
-            log.debug("Full session result: %s", json.dumps(result, indent=2))
-        except ValueError:
-            log.info("Session hydrated (non-JSON 200).")
+        result = resp.json().get("result", {})
+        log.info(
+            "Logged in as: %s  is_logged_in=%s",
+            result.get("display_name") or result.get("email", "?"),
+            result.get("is_logged_in"),
+        )
         return True
+    log.warning("user_session_info returned %s", resp.status_code)
+    return False
 
-    log.error("Hydration failed: %s\n%.500s", resp.status_code, resp.text)
+
+# ---------------------------------------------------------------------------
+# Steps 9-11: wake sequence — confirmed from HAR of hibernating instance
+#
+#  9. GET instanceInfo?direct_wake_up=false  — check state (per HAR)
+#  9b GET check_instance_awake               — skip wake if already up
+#  10. GET devportal.do?action=instance.hibernate.wake_up&direct_wake_up=true
+#          returns {"operation_request_id": "...", "status": "SUCCESS"}
+#  11. Poll devportal.do?action=instance.hibernate.is_wake_up_complete&op_req_id=...
+#          until isAwake=true
+# ---------------------------------------------------------------------------
+def wake_instance(session, user_token):
+    import time
+    import urllib.parse
+
+    hdrs = api_headers(user_token)
+
+    # Step 9: instanceInfo — status check (direct_wake_up=false, per HAR)
+    log.info("Step 9 — instanceInfo")
+    session.get(
+        f"{SN_BASE}/api/snc/v1/dev/instanceInfo"
+        "?sysparm_data=%7B%22action%22%3A%22instance.ops.get_instance_info%22"
+        "%2C%22data%22%3A%7B%22direct_wake_up%22%3Afalse%7D%7D",
+        headers=hdrs, timeout=30,
+    )
+
+    # Step 9b: check if already awake — skip wake trigger if so
+    log.info("Step 9b — check_instance_awake")
+    resp = session.get(
+        f"{SN_BASE}/api/snc/v1/dev/check_instance_awake",
+        headers=hdrs, timeout=30,
+    )
+    if resp.status_code == 200:
+        result = resp.json().get("result", {})
+        is_awake    = result.get("isAwake", False)
+        hibernating = result.get("isHibernating", False)
+        log.info("isAwake=%s  isHibernating=%s", is_awake, hibernating)
+        if is_awake and not hibernating:
+            log.info("Instance already awake ✓")
+            return True
+
+    # Step 10: trigger wake — devportal.do with instance.hibernate.wake_up
+    # This is the actual wake endpoint confirmed in HAR entry [109].
+    log.info("Step 10 — triggering wake (devportal.do instance.hibernate.wake_up)")
+    resp = session.get(
+        f"{SN_BASE}/devportal.do"
+        "?sysparm_data=%7B%22action%22%3A%22instance.hibernate.wake_up%22"
+        "%2C%22data%22%3A%7B%22direct_wake_up%22%3Atrue%7D%7D",
+        headers=hdrs, timeout=30,
+    )
+    log.info("wake_up: %s  body: %s", resp.status_code, resp.text[:200])
+
+    if resp.status_code != 200:
+        log.error("Wake trigger failed: HTTP %s", resp.status_code)
+        return False
+
+    try:
+        op_req_id = resp.json().get("operation_request_id")
+    except ValueError:
+        log.error("Wake trigger returned non-JSON: %s", resp.text[:200])
+        return False
+
+    if not op_req_id:
+        log.error("No operation_request_id in wake response: %s", resp.text[:200])
+        return False
+
+    log.info("operation_request_id: %s", op_req_id)
+
+    # Step 11: poll is_wake_up_complete — HAR entry [135]
+    log.info("Step 11 — polling is_wake_up_complete")
+    poll_url = (
+        f"{SN_BASE}/devportal.do?sysparm_data="
+        + urllib.parse.quote(json.dumps({
+            "action": "instance.hibernate.is_wake_up_complete",
+            "data": {"op_req_id": op_req_id},
+        }))
+    )
+
+    poll_interval = 15
+    max_attempts  = 24   # 24 × 15s = 6 minutes
+    for attempt in range(1, max_attempts + 1):
+        time.sleep(poll_interval)
+        resp = session.get(poll_url, headers=hdrs, timeout=30)
+        if resp.status_code != 200:
+            log.warning("Poll %d: HTTP %s", attempt, resp.status_code)
+            continue
+        try:
+            result = resp.json()
+        except ValueError:
+            log.warning("Poll %d: non-JSON response", attempt)
+            continue
+
+        is_awake  = result.get("isAwake", False)
+        op_status = result.get("operation_request_status", "?")
+        log.info("Poll %d/%d — isAwake=%s  op_status=%s", attempt, max_attempts, is_awake, op_status)
+
+        if is_awake:
+            log.info("Instance is awake ✓")
+            return True
+
+    log.error("Instance did not wake within %d seconds.", max_attempts * poll_interval)
     return False
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
 def main():
     session = requests.Session()
     session.headers.update(BROWSER_HEADERS)
 
-    # 1+2: Follow SN login URL -> parse SAML auto-submit form
-    saml_sso_url, saml_fields = fetch_saml_form(session)
+    saml_url, saml_fields = fetch_saml_form(session)
+    okta_base_url         = okta_base(saml_url)
 
-    # Derive the Okta base URL from the SAML SSO endpoint
-    okta_base_url = okta_base(saml_sso_url)
-    log.info("Okta base URL: %s", okta_base_url)
-
-    # 3: Authenticate with Okta, get sessionToken
+    post_saml_to_okta(session, saml_url, saml_fields)   # seeds Okta cookies
     session_token = okta_authn(session, okta_base_url)
+    okta_resp     = exchange_session_token(session, saml_url, session_token)
 
-    # 4: Exchange sessionToken for SAMLResponse
-    okta_resp = exchange_session_token(session, saml_sso_url, session_token)
-
-    # 5: POST SAMLResponse to SN ACS URL
     post_saml_response(session, okta_resp)
 
-    # 6: Hydrate the dev-portal session
-    if not hydrate_session(session):
-        die("Keep-alive failed — session hydration returned non-200.")
+    user_token = fetch_dev_portal(session)              # critical: get g_ck
+
+    confirm_session(session, user_token)
+
+    if not wake_instance(session, user_token):
+        die("Keep-alive failed — check_instance_awake did not return SUCCESS.")
 
     log.info("Keep-alive complete ✓")
 
