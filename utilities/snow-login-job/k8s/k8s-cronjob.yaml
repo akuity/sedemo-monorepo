@@ -19,7 +19,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: snow-keepalive
-              image: ghcr.io/akuity/sedemo-monorepo-snow-login-job:latest
+              image: ghcr.io/akuity/sedemo-monorepo-snow-poke:latest
               imagePullPolicy: Always
               env:
                 - name: SNOW_USERNAME
