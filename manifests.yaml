@@ -13,45 +13,19 @@ spec:
   selector:
     app: 'team-latte-app'
 ---
-# Source: apps-template/templates/rollout.yaml
-apiVersion: apps/v1
-kind: Deployment
+# Source: apps-template/templates/service.yaml
+apiVersion: v1
+kind: Service
 metadata:
-  name: "team-latte-app"
+  name: svc-canary
+  annotations:
+    prometheus.io/fastscrape: 'true'
 spec:
-  replicas: 2
+  ports:
+  - port: 80
+    targetPort: 8080
   selector:
-    matchLabels:
-      app: "team-latte-app"
-  template:
-    metadata:
-      labels:
-        app: "team-latte-app"
-    spec:
-      containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:27-yellow"
-          name: "team-latte-app"
-          ports:
-            - containerPort: 8080
-          env:
-            - name: SEMVER
-              value: "27-yellow"
-            - name: STAGE
-              value: dev
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            
-          resources:
-            limits:
-              memory: 28Mi
-              cpu: 1m
-            requests:
-              memory: 28Mi
-              cpu: 1m
-  minReadySeconds: 30
-  revisionHistoryLimit: 3
+    app: 'team-latte-app'
 ---
 # Source: apps-template/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
@@ -77,3 +51,108 @@ spec:
             name: svc-stable
             port:
               number: 80
+---
+# Source: apps-template/templates/analysis.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  metrics:
+  - name: success-rate
+    interval: 15s
+    # NOTE: prometheus queries return results in the form of a vector.
+    # So it is common to access the index 0 of the returned array to obtain the value
+    # If there is no traffic to demo app during rollout we will have empty set.
+    successCondition: len(result) == 0 || result[0] >= 0.95
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus-server.prometheus.svc.cluster.local
+        query: |
+          ( sum(rate(nginx_ingress_controller_requests{namespace="team-latte-dev",status="200",canary="team-latte-dev-svc-canary-80"}[30s])) + 1 )
+          /
+          ( sum(rate(nginx_ingress_controller_requests{namespace="team-latte-dev",canary="team-latte-dev-svc-canary-80"}[30s])) + 1 )
+---
+# Source: apps-template/templates/loadgen.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: loadgen
+spec:
+  metrics:
+  - name: load-gen
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: loadgen
+                image: jordi/ab
+                command: [ab,"-n20","https://dev.latte.akpdemoapps.link/"]
+              restartPolicy: Never
+          backoffLimit: 1
+---
+# Source: apps-template/templates/rollout.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: "team-latte-app"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "team-latte-app"
+  template:
+    metadata:
+      labels:
+        app: "team-latte-app"
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:40-purple"
+          name: "team-latte-app"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "40-purple"
+            - name: STAGE
+              value: dev
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  strategy:
+    canary: #Indicates that the rollout should use the Canary strategy
+      canaryService: svc-canary  # required
+      stableService: svc-stable # required
+      trafficRouting:
+        nginx:
+          stableIngress: stable-ingress
+      analysis:
+        templates:
+        - templateName: success-rate
+        startingStep: 4
+      maxSurge: '25%'
+      maxUnavailable: 0
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 20s 
+        - setWeight: 20
+        - analysis:
+            templates:
+            - templateName: loadgen
+        - pause:
+            duration: 20s 
+        - setWeight: 50
+        - pause:
+            duration: 1m 
+        - setWeight: 75
+        - pause:
+            duration: 20s 
+        - setWeight: 100
