@@ -43,8 +43,26 @@ jobs:
       - name: Write app-values.yaml via GitHub Contents API
         run: |
           FULL_REPO="sedemo-app-${{ inputs.repoName }}"
-          CONTENT=$(printf 'image:\n  repository: ghcr.io/akuity/%s\ningress:\n  custom_prefix: %s\nrollouts:\n  enabled: %s\n' \
-            "${FULL_REPO}" "${{ inputs.repoName }}" "${{ inputs.rolloutsEnabled }}" | base64 -w 0)
+          {
+            echo "project:"
+            echo "  group: sedemo-${{ inputs.repoName }}"
+            echo ""
+            echo "image:"
+            echo "  repository: ghcr.io/akuity/${FULL_REPO}"
+            echo "  selectionStrategy: Lexical"
+            echo "  tagRegex: '^\d*\$'"
+            echo "  containerPort: 80"
+            echo "  memoryLimit: 64Mi"
+            echo "  cpuLimit: 1m"
+            echo "ingress:"
+            echo "  custom_prefix: ${{ inputs.repoName }}"
+            echo "rollouts:"
+            echo "  enabled: ${{ inputs.rolloutsEnabled }}"
+            echo ""
+            echo "environments:"
+            echo "  staging: true"
+          } > /tmp/app-values.yaml
+          CONTENT=$(base64 -w 0 < /tmp/app-values.yaml)
 
           # Fetch existing file SHA if the file already exists (required for updates)
           FILE_SHA=$(curl -s \
