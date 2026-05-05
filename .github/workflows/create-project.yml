@@ -63,8 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: create-team-config
     steps:
-      - name: Hard refresh templated-apps on ArgoCD
+      - name: Hard refresh templated-team-projects on ArgoCD
         run: |
           curl -s -f -o /dev/null \
             -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applications/templated-apps?refresh=hard"
+            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applications/templated-team-projects?refresh=hard"
