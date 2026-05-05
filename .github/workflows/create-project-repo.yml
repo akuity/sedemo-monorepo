@@ -1,0 +1,67 @@
+name: Create Project Repo
+on:
+  workflow_dispatch:
+    inputs:
+      repoName:
+        description: "Repo name suffix (e.g., team-momo). Full repo will be sedemo-app-<repoName>."
+        required: true
+        type: string
+      rolloutsEnabled:
+        description: "Enable Argo Rollouts."
+        required: false
+        type: boolean
+        default: true
+jobs:
+  create-project-repo:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - name: Create repo from template
+        run: |
+          FULL_REPO="sedemo-app-${{ inputs.repoName }}"
+          if gh repo view "akuity/${FULL_REPO}" &>/dev/null; then
+            echo "Repo akuity/${FULL_REPO} already exists, skipping creation."
+          else
+            gh repo create "akuity/${FULL_REPO}" \
+              --template akuity/sedemo-apptemplate \
+              --public
+          fi
+          gh repo clone "akuity/${FULL_REPO}" "${FULL_REPO}"
+
+      - name: Update app-values.yaml
+        run: |
+          FULL_REPO="sedemo-app-${{ inputs.repoName }}"
+          mkdir -p "${FULL_REPO}/platform"
+          {
+            echo "image:"
+            echo "  repository: ghcr.io/akuity/${FULL_REPO}"
+            echo "ingress:"
+            echo "  custom_prefix: ${{ inputs.repoName }}"
+            echo "rollouts:"
+            echo "  enabled: ${{ inputs.rolloutsEnabled }}"
+          } > "${FULL_REPO}/platform/app-values.yaml"
+
+      - name: Commit and push
+        run: |
+          FULL_REPO="sedemo-app-${{ inputs.repoName }}"
+          cd "${FULL_REPO}"
+          /usr/bin/git config --global user.name "Akuity Bot"
+          /usr/bin/git config --global user.email "akuitybot@akuity.io"
+          git add platform/app-values.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to commit — app-values.yaml already up to date."
+          else
+            git commit -m "Configure app-values.yaml for ${{ inputs.repoName }}"
+            git push
+          fi
+
+  refresh-appset:
+    runs-on: ubuntu-latest
+    needs: create-project-repo
+    steps:
+      - name: Force refresh templated-repo-projects AppSet on ArgoCD
+        run: |
+          curl -s -f -o /dev/null \
+            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-repo-projects?forceRefresh=true"
