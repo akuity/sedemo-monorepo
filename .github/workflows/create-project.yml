@@ -55,8 +55,8 @@ jobs:
           git commit -m "Add ${{ inputs.teamName }} to templated folder"
           git push -u origin main
 
-      - name: Refresh templated-team-projects AppSet on ArgoCD
+      - name: Refresh templated-apps AppSet on ArgoCD
         run: |
           curl -s -f -o /dev/null \
             -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-team-projects?forceRefresh=true"
+            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-apps?forceRefresh=true"
