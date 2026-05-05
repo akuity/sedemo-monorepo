@@ -42,8 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: delete-team-config
     steps:
-      - name: Refresh templated-team-projects AppSet on ArgoCD
+      - name: Notify ArgoCD of push to sedemo-monorepo
         run: |
           curl -s -f -o /dev/null \
-            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-team-projects?forceRefresh=true"
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            -d '{"ref":"refs/heads/main","repository":{"html_url":"https://github.com/akuity/sedemo-monorepo","clone_url":"https://github.com/akuity/sedemo-monorepo.git"}}' \
+            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/webhook"
