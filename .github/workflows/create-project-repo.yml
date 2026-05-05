@@ -29,36 +29,42 @@ jobs:
             gh repo create "akuity/${FULL_REPO}" \
               --template akuity/sedemo-apptemplate \
               --public
+            # Wait for GitHub to finish applying the template
+            echo "Waiting for template to initialise..."
+            for i in $(seq 1 12); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                "https://api.github.com/repos/akuity/${FULL_REPO}/git/refs/heads/main")
+              [ "${STATUS}" = "200" ] && break
+              sleep 5
+            done
           fi
-          gh repo clone "akuity/${FULL_REPO}" "${FULL_REPO}"
 
-      - name: Update app-values.yaml
+      - name: Write app-values.yaml via GitHub Contents API
         run: |
           FULL_REPO="sedemo-app-${{ inputs.repoName }}"
-          mkdir -p "${FULL_REPO}/platform"
-          {
-            echo "image:"
-            echo "  repository: ghcr.io/akuity/${FULL_REPO}"
-            echo "ingress:"
-            echo "  custom_prefix: ${{ inputs.repoName }}"
-            echo "rollouts:"
-            echo "  enabled: ${{ inputs.rolloutsEnabled }}"
-          } > "${FULL_REPO}/platform/app-values.yaml"
+          CONTENT=$(printf 'image:\n  repository: ghcr.io/akuity/%s\ningress:\n  custom_prefix: %s\nrollouts:\n  enabled: %s\n' \
+            "${FULL_REPO}" "${{ inputs.repoName }}" "${{ inputs.rolloutsEnabled }}" | base64 -w 0)
 
-      - name: Commit and push
-        run: |
-          FULL_REPO="sedemo-app-${{ inputs.repoName }}"
-          cd "${FULL_REPO}"
-          /usr/bin/git config --global url."https://${GH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-          /usr/bin/git config --global user.name "Akuity Bot"
-          /usr/bin/git config --global user.email "akuitybot@akuity.io"
-          git add platform/app-values.yaml
-          if git diff --cached --quiet; then
-            echo "No changes to commit — app-values.yaml already up to date."
+          # Fetch existing file SHA if the file already exists (required for updates)
+          FILE_SHA=$(curl -s \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/akuity/${FULL_REPO}/contents/platform/app-values.yaml" \
+            | jq -r '.sha // empty')
+
+          if [ -n "${FILE_SHA}" ]; then
+            PAYLOAD=$(jq -n --arg msg "Configure app-values.yaml" --arg c "${CONTENT}" --arg s "${FILE_SHA}" \
+              '{message: $msg, content: $c, sha: $s}')
           else
-            git commit -m "Configure app-values.yaml for ${{ inputs.repoName }}"
-            git push
+            PAYLOAD=$(jq -n --arg msg "Configure app-values.yaml" --arg c "${CONTENT}" \
+              '{message: $msg, content: $c}')
           fi
+
+          curl -s -f -o /dev/null -X PUT \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${PAYLOAD}" \
+            "https://api.github.com/repos/akuity/${FULL_REPO}/contents/platform/app-values.yaml"
 
   refresh-appset:
     runs-on: ubuntu-latest
