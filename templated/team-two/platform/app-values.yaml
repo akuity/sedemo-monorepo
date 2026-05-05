@@ -1,9 +1,0 @@
-project:
-  group: sedemo-team-two
-
-image:
-  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
-ingress:
-  custom_prefix: two
-rollouts:
-  enabled: false
