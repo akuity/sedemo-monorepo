@@ -63,11 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: create-team-config
     steps:
-      - name: Notify ArgoCD of push to sedemo-monorepo
+      - name: Hard refresh templated-apps on ArgoCD
         run: |
           curl -s -f -o /dev/null \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-GitHub-Event: push" \
-            -d '{"ref":"refs/heads/main","repository":{"html_url":"https://github.com/akuity/sedemo-monorepo","clone_url":"https://github.com/akuity/sedemo-monorepo.git"}}' \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/webhook"
+            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applications/templated-apps?refresh=hard"
