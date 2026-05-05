@@ -15,17 +15,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify folder exists
+      - name: Check folder exists
+        id: check
         run: |
-          if [ ! -d "templated/${{ inputs.teamName }}" ]; then
-            echo "Error: templated/${{ inputs.teamName }} does not exist."
-            exit 1
+          if [ -d "templated/${{ inputs.teamName }}" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Folder templated/${{ inputs.teamName }} does not exist — nothing to delete."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Remove team folder
+        if: steps.check.outputs.exists == 'true'
         run: rm -rf "templated/${{ inputs.teamName }}"
 
       - name: Commit and push
+        if: steps.check.outputs.exists == 'true'
         run: |
           /usr/bin/git config --global user.name "Akuity Bot"
           /usr/bin/git config --global user.email "akuitybot@akuity.io"
@@ -33,6 +38,10 @@ jobs:
           git commit -m "Remove ${{ inputs.teamName }} from templated folder"
           git push -u origin main
 
+  refresh-appset:
+    runs-on: ubuntu-latest
+    needs: delete-team-config
+    steps:
       - name: Refresh templated-apps AppSet on ArgoCD
         run: |
           curl -s -f -o /dev/null \

@@ -52,9 +52,17 @@ jobs:
           /usr/bin/git config --global user.name "Akuity Bot"
           /usr/bin/git config --global user.email "akuitybot@akuity.io"
           git add "templated/${{ inputs.teamName }}/"
-          git commit -m "Add ${{ inputs.teamName }} to templated folder"
-          git push -u origin main
+          if git diff --cached --quiet; then
+            echo "No changes to commit — team already exists with identical config."
+          else
+            git commit -m "Add ${{ inputs.teamName }} to templated folder"
+            git push -u origin main
+          fi
 
+  refresh-appset:
+    runs-on: ubuntu-latest
+    needs: create-team-config
+    steps:
       - name: Refresh templated-apps AppSet on ArgoCD
         run: |
           curl -s -f -o /dev/null \
