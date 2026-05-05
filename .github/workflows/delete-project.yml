@@ -1,0 +1,32 @@
+name: Delete Project
+on:
+  workflow_dispatch:
+    inputs:
+      teamName:
+        description: "Team name to delete (e.g., team-latte). Removes templated/<teamName>/ from the repo."
+        required: true
+        type: string
+jobs:
+  delete-team-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify folder exists
+        run: |
+          if [ ! -d "templated/${{ inputs.teamName }}" ]; then
+            echo "Error: templated/${{ inputs.teamName }} does not exist."
+            exit 1
+          fi
+
+      - name: Remove team folder
+        run: rm -rf "templated/${{ inputs.teamName }}"
+
+      - name: Commit and push
+        run: |
+          /usr/bin/git config --global user.name "Akuity Bot"
+          /usr/bin/git config --global user.email "akuitybot@akuity.io"
+          git add "templated/${{ inputs.teamName }}/"
+          git commit -m "Remove ${{ inputs.teamName }} from templated folder"
+          git push -u origin main

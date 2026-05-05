@@ -1,0 +1,54 @@
+name: Create New Project
+on:
+  workflow_dispatch:
+    inputs:
+      teamName:
+        description: "Team name (e.g., team-latte). Sets the folder path, project group (sedemo-<teamName>), and ingress prefix."
+        required: true
+        type: string
+      imageRepository:
+        description: "Docker image repository URL."
+        required: true
+        type: string
+        default: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+      rolloutsEnabled:
+        description: "Enable Argo Rollouts."
+        required: false
+        type: boolean
+        default: false
+jobs:
+  create-team-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive ingress prefix
+        id: vars
+        run: |
+          PREFIX="${{ inputs.teamName }}"
+          PREFIX="${PREFIX#team-}"
+          echo "ingress_prefix=${PREFIX}" >> "$GITHUB_OUTPUT"
+
+      - name: Create folder structure and app-values.yaml
+        run: |
+          mkdir -p "templated/${{ inputs.teamName }}/platform"
+          {
+            echo "project:"
+            echo "  group: sedemo-${{ inputs.teamName }}"
+            echo ""
+            echo "image:"
+            echo "  repository: ${{ inputs.imageRepository }}"
+            echo "ingress:"
+            echo "  custom_prefix: ${{ steps.vars.outputs.ingress_prefix }}"
+            echo "rollouts:"
+            echo "  enabled: ${{ inputs.rolloutsEnabled }}"
+          } > "templated/${{ inputs.teamName }}/platform/app-values.yaml"
+
+      - name: Commit and push
+        run: |
+          /usr/bin/git config --global user.name "Akuity Bot"
+          /usr/bin/git config --global user.email "akuitybot@akuity.io"
+          git add "templated/${{ inputs.teamName }}/"
+          git commit -m "Add ${{ inputs.teamName }} to templated folder"
+          git push -u origin main
