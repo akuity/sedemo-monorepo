@@ -46,6 +46,7 @@ jobs:
         run: |
           FULL_REPO="sedemo-app-${{ inputs.repoName }}"
           cd "${FULL_REPO}"
+          /usr/bin/git config --global url."https://${GH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
           /usr/bin/git config --global user.name "Akuity Bot"
           /usr/bin/git config --global user.email "akuitybot@akuity.io"
           git add platform/app-values.yaml
