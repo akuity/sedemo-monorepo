@@ -20,7 +20,10 @@ jobs:
       - name: Create repo from template
         run: |
           FULL_REPO="sedemo-app-${{ inputs.repoName }}"
-          if gh repo view "akuity/${FULL_REPO}" &>/dev/null; then
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/akuity/${FULL_REPO}")
+          if [ "${HTTP_STATUS}" = "200" ]; then
             echo "Repo akuity/${FULL_REPO} already exists, skipping creation."
           else
             gh repo create "akuity/${FULL_REPO}" \
