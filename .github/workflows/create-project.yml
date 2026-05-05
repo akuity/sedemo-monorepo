@@ -1,4 +1,4 @@
-name: Create New Project
+name: Create Project
 on:
   workflow_dispatch:
     inputs:
