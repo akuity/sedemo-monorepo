@@ -1,5 +1,7 @@
 # rollouts-app
 
+Testing a PR
+
 Source application for the [demo-rollouts Kargo pipeline](https://github.com/akuity/sedemo-platform/tree/main/apps/demo-rollouts/kargo) and the [templated-teams](https://github.com/akuity/sedemo-platform/tree/main/templated-teams) demos.
 
 A simple Go web app that displays a colored tile. The color changes with each image tag, making it easy to visually confirm canary weight shifts and multi-region rollouts during live demos.
