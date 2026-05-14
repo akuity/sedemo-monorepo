@@ -58,13 +58,3 @@ jobs:
             git commit -m "Add ${{ inputs.teamName }} to templated folder"
             git push -u origin main
           fi
-
-  refresh-appset:
-    runs-on: ubuntu-latest
-    needs: create-team-config
-    steps:
-      - name: Force refresh templated-team-projects AppSet on ArgoCD
-        run: |
-          curl -s -f -o /dev/null \
-            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-team-projects?forceRefresh=true"
