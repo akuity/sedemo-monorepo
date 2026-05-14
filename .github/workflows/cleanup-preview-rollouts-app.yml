@@ -1,0 +1,22 @@
+name: Cleanup PR Preview Image
+run-name: Delete preview image for closed PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-tags: pr-${{ github.event.pull_request.number }}-*
+          packages: sedemo-monorepo-rollouts-app
+          token: ${{ secrets.GITHUB_TOKEN }}

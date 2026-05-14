@@ -87,6 +87,7 @@ jobs:
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           keep-n-tagged: 5
+          exclude-tags: '^pr-'
           delete-ghost-images: true
           delete-orphaned-images: true
           delete-untagged: true
