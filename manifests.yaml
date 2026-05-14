@@ -1,0 +1,36 @@
+---
+# Source: demo-ephemeral-preview/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  environment: pr-148
+  image-tag: pr-148-purple
+---
+# Source: demo-ephemeral-preview/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: demo-ephemeral
+  template:
+    metadata:
+      labels:
+        app: demo-ephemeral
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/akuity/sedemo-monorepo-rollouts-app:pr-148-purple
+        ports:
+        - containerPort: 8080
+        env:
+        - name: COLOR
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: image-tag
