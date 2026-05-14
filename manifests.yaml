@@ -1,0 +1,72 @@
+---
+# Source: apps-template/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-stable
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: 'team-lattedog-app'
+---
+# Source: apps-template/templates/rollout.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "team-lattedog-app"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "team-lattedog-app"
+  template:
+    metadata:
+      labels:
+        app: "team-lattedog-app"
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:44-blue"
+          name: "team-lattedog-app"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "44-blue"
+            - name: STAGE
+              value: dev
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+---
+# Source: apps-template/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stable-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - "dev.lattedog.akpdemoapps.link"
+    secretName: tls-secret
+  rules:
+  - host: "dev.lattedog.akpdemoapps.link"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-stable
+            port:
+              number: 80
