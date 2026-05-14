@@ -83,13 +83,3 @@ jobs:
             -H "Content-Type: application/json" \
             -d "${PAYLOAD}" \
             "https://api.github.com/repos/akuity/${FULL_REPO}/contents/platform/app-values.yaml"
-
-  refresh-appset:
-    runs-on: ubuntu-latest
-    needs: create-project-repo
-    steps:
-      - name: Force refresh templated-repo-projects AppSet on ArgoCD
-        run: |
-          curl -s -f -o /dev/null \
-            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-            "https://${{ secrets.ARGOCD_SERVER }}/api/v1/applicationsets/templated-repo-projects?forceRefresh=true"
