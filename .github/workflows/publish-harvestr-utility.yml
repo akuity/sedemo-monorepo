@@ -54,4 +54,4 @@ jobs:
           delete-ghost-images: true
           delete-orphaned-images: true
           delete-untagged: true
-          packages: ${{ env.IMAGE_NAME}}
+          packages: sedemo-monorepo-harvestr-jobs
