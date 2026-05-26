@@ -3,14 +3,14 @@ kind: CronJob
 metadata:
   name: harvestr-lost-revenue
 spec:
-  # Runs at 08:00 UTC every day
-  schedule: "0 8 * * *"
+  # Run analysis once a month
+  schedule: "0 8 1 * *"
   # Keep the last 3 successful and 1 failed job for debugging
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   # If a previous job is still running, skip the new one
   concurrencyPolicy: Forbid
-  suspend: true # DO NOT RUN (yet)
+  suspend: false
   jobTemplate:
     spec:
       # Retry up to 2 times on failure before giving up
@@ -20,19 +20,14 @@ spec:
           restartPolicy: Never
           containers:
             - name: harvestr-lost-revenue
-              image: ghcr.io/akuity/sedemo-monorepo-snow-poke:latest
+              image: ghcr.io/akuity/sedemo-monorepo-harvestr-jobs:latest
               imagePullPolicy: Always
               env:
-                - name: HARVESTR_USERNAME
+                - name: HARVESTR_API_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: harvestr-credentials
-                      key: username
-                - name: HARVESTR_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: harvestr-credentials
-                      key: password
+                      key: api-token
               resources:
                 requests:
                   cpu: "50m"
