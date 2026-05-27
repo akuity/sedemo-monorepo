@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: akuity-agent-job-creator
+  namespace: utilities
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: akuity-agent-job-creator-binding
+  namespace: utilities
+subjects:
+  - kind: ServiceAccount
+    name: akuity-agent
+    namespace: akuity
+roleRef:
+  kind: Role
+  name: akuity-agent-job-creator
+  apiGroup: rbac.authorization.k8s.io
