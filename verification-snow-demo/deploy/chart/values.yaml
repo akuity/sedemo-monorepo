@@ -13,3 +13,5 @@ kargo:
 
 ingress:
   root_domain: rollouts.k8s.orb.local
+
+component: frontend
