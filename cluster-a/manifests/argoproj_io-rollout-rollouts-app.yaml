@@ -1,0 +1,62 @@
+# Source: deploy/templates/rollout.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rollouts-app
+  template:
+    metadata:
+      labels:
+        app: rollouts-app
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:46-purple"
+          name: rollouts-app
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "46-purple"
+            - name: STAGE
+              value: dev-primary
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  strategy:
+    canary: #Indicates that the rollout should use the Canary strategy
+      canaryService: rollouts-svc-canary  # required
+      stableService: rollouts-svc-stable # required
+      trafficRouting:
+        nginx:
+          stableIngress: stable-ingress
+      analysis:
+        templates:
+        - templateName: success-rate
+        - templateName: response-time
+        startingStep: 3
+      maxSurge: '25%'
+      maxUnavailable: 0
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 20s 
+        - analysis:
+            templates:
+            - templateName: loadgen
+        - setWeight: 20
+        - pause:
+            duration: 20s 
+        - setWeight: 50
+        - pause:
+            duration: 1m 
+        - setWeight: 75
+        - pause:
+            duration: 20s 
+        - setWeight: 100
