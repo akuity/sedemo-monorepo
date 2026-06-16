@@ -1,0 +1,13 @@
+# Source: deploy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rollouts-svc-canary
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: rollouts-app
