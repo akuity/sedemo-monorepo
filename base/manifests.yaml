@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: rollouts-svc-stable
+  name: rollouts-svc-stable-backend
   annotations:
     prometheus.io/fastscrape: 'true'
 spec:
@@ -17,7 +17,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: rollouts-svc-canary
+  name: rollouts-svc-canary-backend
   annotations:
     prometheus.io/fastscrape: 'true'
 spec:
@@ -35,14 +35,14 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: "snow-demo-dev.akpdemoapps.link"
+  - host: "snow-demo-dev-backend.akpdemoapps.link"
     http:
       paths:
       - pathType: Prefix
         path: /
         backend:
           service:
-            name: rollouts-svc-stable
+            name: rollouts-svc-stable-backend
             port:
               number: 80
 ---
@@ -50,51 +50,45 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: success-rate
+  name: success-rate-backend
 spec:
   metrics:
   - name: success-rate
     interval: 15s
-    # NOTE: prometheus queries return results in the form of a vector.
-    # So it is common to access the index 0 of the returned array to obtain the value
-    # If there is no traffic to demo app during rollout we will have empty set.
-    successCondition: len(result) == 0 || result[0] \u003e= 0.95
+    successCondition: len(result) == 0 || result[0] >= 0.95
     failureLimit: 3
     provider:
       prometheus:
         address: http://prometheus-server.prometheus.svc.cluster.local
         query: |
-          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev",status="200",canary="snow-demo-dev-rollouts-svc-canary-80"}[30s])) + 1 )
+          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-backend",status="200",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
           /
-          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev",canary="snow-demo-dev-rollouts-svc-canary-80"}[30s])) + 1 )
+          ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-backend",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
 ---
 # Source: deploy/templates/analysis.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: response-time
+  name: response-time-backend
 spec:
   metrics:
   - name: response-time
     interval: 10s
-    # NOTE: prometheus queries return results in the form of a vector.
-    # So it is common to access the index 0 of the returned array to obtain the value
-    # If there is no traffic to demo app during rollout we will have empty set.
-    successCondition: len(result) == 0 || result[0] \u003c= 1.5
+    successCondition: len(result) == 0 || result[0] <= 1.5
     failureLimit: 2
     provider:
       prometheus:
         address: http://prometheus-server.prometheus.svc.cluster.local
         query: |
-          sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-dev",method="POST",canary="snow-demo-dev-rollouts-svc-canary-80"}[30s]) or vector(.1)) 
+          sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-dev-backend",method="POST",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s]) or vector(.1)) 
           /
-          sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-dev",method="POST",canary="snow-demo-dev-rollouts-svc-canary-80"}[30s])  or vector(.1))
+          sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-dev-backend",method="POST",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])  or vector(.1))
 ---
 # Source: deploy/templates/loadgen.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: loadgen
+  name: loadgen-backend
 spec:
   metrics:
   - name: load-gen
@@ -106,7 +100,7 @@ spec:
               containers:
               - name: loadgen
                 image: jordi/ab
-                command: [ab,"-n20","-mPOST","http://snow-demo-dev.akpdemoapps.link/"]
+                command: [ab,"-n20","-mPOST","http://snow-demo-dev-backend.akpdemoapps.link/"]
               restartPolicy: Never
           backoffLimit: 1
 ---
@@ -114,7 +108,7 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
-  name: rollouts-app
+  name: rollouts-app-backend
 spec:
   replicas: 2
   selector:
@@ -143,14 +137,15 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     canary:
-      canaryService: rollouts-svc-canary
-      stableService: rollouts-svc-stable-frontend
+      canaryService: rollouts-svc-canary-backend
+      stableService: rollouts-svc-stable-backend
       trafficRouting:
         nginx:
-          stableIngress: stable-ingress
+          stableIngress: stable-ingress-backend
       analysis:
         templates:
-        - templateName: response-time
+        - templateName: response-time-backend
+        - templateName: loadgen-backend
         startingStep: 3
       maxSurge: '25%'
       maxUnavailable: 0
@@ -160,7 +155,7 @@ spec:
             duration: 2s 
         - analysis:
             templates:
-            - templateName: loadgen
+            - templateName: loadgen-backend
         - setWeight: 20
         - pause:
             duration: 2s 
