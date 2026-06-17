@@ -4,7 +4,7 @@ kind: Kustomization
 resources:
 - ../base
 
-namespace: snow-demo-dev-frontend
+namespace: snow-demo-prod-amer-east-frontend
 
 nameSuffix: -frontend
 
@@ -15,7 +15,7 @@ patches:
   patch: |-
     - op: replace
       path: /spec/rules/0/host
-      value: snow-demo-dev-frontend.akpdemoapps.link
+      value: snow-demo-prod-amer-east-frontend.akpdemoapps.link
 - target:
     kind: Rollout
     name: rollouts-app
@@ -41,7 +41,7 @@ patches:
   patch: |-
     - op: replace
       path: /spec/metrics/0/provider/job/spec/template/spec/containers/0/command
-      value: [ab, "-n20", "-mPOST", "http://snow-demo-dev-frontend.akpdemoapps.link/"]
+      value: [ab, "-n20", "-mPOST", "http://snow-demo-prod-amer-east-frontend.akpdemoapps.link/"]
 - target:
     kind: AnalysisTemplate
     name: success-rate
@@ -49,9 +49,9 @@ patches:
     - op: replace
       path: /spec/metrics/0/provider/prometheus/query
       value: |
-        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-frontend",status="200",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-prod-amer-east-frontend",status="200",canary="snow-demo-prod-amer-east-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
         /
-        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-frontend",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-prod-amer-east-frontend",canary="snow-demo-prod-amer-east-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
 - target:
     kind: AnalysisTemplate
     name: response-time
@@ -59,6 +59,6 @@ patches:
     - op: replace
       path: /spec/metrics/0/provider/prometheus/query
       value: |
-        sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-dev-frontend",method="POST",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s]) or vector(.1)) 
+        sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-prod-amer-east-frontend",method="POST",canary="snow-demo-prod-amer-east-frontend-rollouts-svc-canary-frontend-80"}[30s]) or vector(.1)) 
         /
-        sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-dev-frontend",method="POST",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])  or vector(.1))
+        sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-prod-amer-east-frontend",method="POST",canary="snow-demo-prod-amer-east-frontend-rollouts-svc-canary-frontend-80"}[30s])  or vector(.1))
