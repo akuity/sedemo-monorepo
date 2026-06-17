@@ -4,7 +4,7 @@ kind: Kustomization
 resources:
 - ../base
 
-namespace: snow-demo-dev-backend
+namespace: snow-demo-staging-backend
 
 nameSuffix: -backend
 
@@ -15,7 +15,7 @@ patches:
   patch: |-
     - op: replace
       path: /spec/rules/0/host
-      value: snow-demo-dev-backend.akpdemoapps.link
+      value: snow-demo-staging-backend.akpdemoapps.link
 - target:
     kind: Rollout
     name: rollouts-app
@@ -41,7 +41,7 @@ patches:
   patch: |-
     - op: replace
       path: /spec/metrics/0/provider/job/spec/template/spec/containers/0/command
-      value: [ab, "-n20", "-mPOST", "http://snow-demo-dev-backend.akpdemoapps.link/"]
+      value: [ab, "-n20", "-mPOST", "http://snow-demo-staging-backend.akpdemoapps.link/"]
 - target:
     kind: AnalysisTemplate
     name: success-rate
@@ -49,9 +49,9 @@ patches:
     - op: replace
       path: /spec/metrics/0/provider/prometheus/query
       value: |
-        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-backend",status="200",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-staging-backend",status="200",canary="snow-demo-staging-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
         /
-        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-backend",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-staging-backend",canary="snow-demo-staging-backend-rollouts-svc-canary-backend-80"}[30s])) + 1 )
 - target:
     kind: AnalysisTemplate
     name: response-time
@@ -59,6 +59,6 @@ patches:
     - op: replace
       path: /spec/metrics/0/provider/prometheus/query
       value: |
-        sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-dev-backend",method="POST",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s]) or vector(.1)) 
+        sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-staging-backend",method="POST",canary="snow-demo-staging-backend-rollouts-svc-canary-backend-80"}[30s]) or vector(.1)) 
         /
-        sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-dev-backend",method="POST",canary="snow-demo-dev-backend-rollouts-svc-canary-backend-80"}[30s])  or vector(.1))
+        sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-staging-backend",method="POST",canary="snow-demo-staging-backend-rollouts-svc-canary-backend-80"}[30s])  or vector(.1))
