@@ -1,0 +1,19 @@
+# Source: deploy/templates/loadgen.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: loadgen
+spec:
+  metrics:
+  - name: load-gen
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: loadgen
+                image: jordi/ab
+                command: [ab,"-n20","-mPOST","http://team-eddie-staging.akpdemoapps.link/"]
+              restartPolicy: Never
+          backoffLimit: 1

@@ -1,0 +1,21 @@
+# Source: deploy/templates/analysis.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: response-time
+spec:
+  metrics:
+  - name: response-time
+    interval: 15s
+    # NOTE: prometheus queries return results in the form of a vector.
+    # So it is common to access the index 0 of the returned array to obtain the value
+    # If there is no traffic to demo app during rollout we will have empty set.
+    successCondition: len(result) == 0 || result[0] <= 1.5
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus-server.prometheus.svc.cluster.local
+        query: |
+          sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="team-eddie-staging",method="POST",canary="team-eddie-staging-rollouts-svc-canary-80"}[30s]) or vector(.1)) 
+          /
+          sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="team-eddie-staging",method="POST",canary="team-eddie-staging-rollouts-svc-canary-80"}[30s])  or vector(.1))
