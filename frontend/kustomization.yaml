@@ -26,4 +26,14 @@ patches:
     - op: replace
       path: /spec/strategy/canary/stableService
       value: rollouts-svc-stable-frontend
+    - op: replace
+      path: /spec/strategy/canary/steps/2/analysis/templates/0/templateName
+      value: loadgen-frontend
+- target:
+    kind: AnalysisTemplate
+    name: loadgen
+  patch: |-
+    - op: replace
+      path: /spec/metrics/0/provider/job/spec/template/spec/containers/0/command
+      value: [ab, "-n20", "-mPOST", "http://snow-demo-dev-frontend.akpdemoapps.link/"]
 
