@@ -42,7 +42,7 @@ spec:
         path: /
         backend:
           service:
-            name: rollouts-svc-stable
+            name: rollouts-svc-stable-backend
             port:
               number: 80
 ---
@@ -58,7 +58,7 @@ spec:
     # NOTE: prometheus queries return results in the form of a vector.
     # So it is common to access the index 0 of the returned array to obtain the value
     # If there is no traffic to demo app during rollout we will have empty set.
-    successCondition: len(result) == 0 || result[0] >= 0.95
+    successCondition: len(result) == 0 || result[0] \u003e= 0.95
     failureLimit: 3
     provider:
       prometheus:
@@ -80,7 +80,7 @@ spec:
     # NOTE: prometheus queries return results in the form of a vector.
     # So it is common to access the index 0 of the returned array to obtain the value
     # If there is no traffic to demo app during rollout we will have empty set.
-    successCondition: len(result) == 0 || result[0] <= 1.5
+    successCondition: len(result) == 0 || result[0] \u003c= 1.5
     failureLimit: 2
     provider:
       prometheus:
@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:18-red"
+        - image: "ghcr.io/akuity/sedemo-monorepo-snow-demo:16-purple"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "18-red"
+              value: "16-purple"
             - name: STAGE
               value: dev
             - name: NAMESPACE
@@ -142,15 +142,14 @@ spec:
   minReadySeconds: 30
   revisionHistoryLimit: 3
   strategy:
-    canary: #Indicates that the rollout should use the Canary strategy
-      canaryService: rollouts-svc-canary  # required
-      stableService: rollouts-svc-stable # required
+    canary:
+      canaryService: rollouts-svc-canary
+      stableService: rollouts-svc-stable-backend
       trafficRouting:
         nginx:
           stableIngress: stable-ingress
       analysis:
         templates:
-        # - templateName: success-rate # temporarily removing to guaratee rollouts success
         - templateName: response-time
         startingStep: 3
       maxSurge: '25%'
