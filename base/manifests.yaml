@@ -42,7 +42,7 @@ spec:
         path: /
         backend:
           service:
-            name: rollouts-svc-stable-backend
+            name: rollouts-svc-stable
             port:
               number: 80
 ---
@@ -143,8 +143,8 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     canary:
-      canaryService: rollouts-svc-canary-backend
-      stableService: rollouts-svc-stable-backend
+      canaryService: rollouts-svc-canary
+      stableService: rollouts-svc-stable
       trafficRouting:
         nginx:
           stableIngress: stable-ingress
