@@ -32,6 +32,9 @@ patches:
     - op: replace
       path: /spec/strategy/canary/analysis/templates/0/templateName
       value: response-time-frontend
+    - op: replace
+          path: /spec/strategy/canary/trafficRouting/nginx/stableIngress
+          value: stable-ingress-frontend
 - target:
     kind: AnalysisTemplate
     name: loadgen
