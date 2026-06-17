@@ -42,7 +42,7 @@ spec:
         path: /
         backend:
           service:
-            name: rollouts-svc-stable
+            name: rollouts-svc-stable-backend
             port:
               number: 80
 ---
@@ -94,7 +94,7 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: loadgen
+  name: loadgen-backend
 spec:
   metrics:
   - name: load-gen
@@ -143,14 +143,15 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     canary:
-      canaryService: rollouts-svc-canary
-      stableService: rollouts-svc-stable
+      canaryService: rollouts-svc-canary-backend
+      stableService: rollouts-svc-stable-backend
       trafficRouting:
         nginx:
           stableIngress: stable-ingress
       analysis:
         templates:
         - templateName: response-time
+        - templateName: loadgen-backend
         startingStep: 3
       maxSurge: '25%'
       maxUnavailable: 0
@@ -160,7 +161,7 @@ spec:
             duration: 2s 
         - analysis:
             templates:
-            - templateName: loadgen
+            - templateName: loadgen-backend
         - setWeight: 20
         - pause:
             duration: 2s 
