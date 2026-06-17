@@ -16,3 +16,14 @@ patches:
     - op: replace
       path: /spec/rules/0/host
       value: snow-demo-dev-frontend.akpdemoapps.link
+- target:
+    kind: Rollout
+    name: rollouts-app
+  patch: |-
+    - op: replace
+      path: /spec/strategy/canary/canaryService
+      value: rollouts-svc-canary-frontend
+    - op: replace
+      path: /spec/strategy/canary/stableService
+      value: rollouts-svc-stable-frontend
+
