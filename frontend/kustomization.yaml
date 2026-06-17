@@ -29,6 +29,9 @@ patches:
     - op: replace
       path: /spec/strategy/canary/steps/2/analysis/templates/0/templateName
       value: loadgen-frontend
+    - op: replace
+      path: /spec/strategy/canary/analysis/templates/0/templateName
+      value: response-time-frontend
 - target:
     kind: AnalysisTemplate
     name: loadgen
@@ -36,4 +39,23 @@ patches:
     - op: replace
       path: /spec/metrics/0/provider/job/spec/template/spec/containers/0/command
       value: [ab, "-n20", "-mPOST", "http://snow-demo-dev-frontend.akpdemoapps.link/"]
-
+- target:
+    kind: AnalysisTemplate
+    name: success-rate
+  patch: |-
+    - op: replace
+      path: /spec/metrics/0/provider/prometheus/query
+      value: |
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-frontend",status="200",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
+        /
+        ( sum(rate(nginx_ingress_controller_requests{namespace="snow-demo-dev-frontend",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])) + 1 )
+- target:
+    kind: AnalysisTemplate
+    name: response-time
+  patch: |-
+    - op: replace
+      path: /spec/metrics/0/provider/prometheus/query
+      value: |
+        sum(rate(nginx_ingress_controller_response_duration_seconds_sum{namespace="snow-demo-dev-frontend",method="POST",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s]) or vector(.1)) 
+        /
+        sum(rate(nginx_ingress_controller_response_duration_seconds_count{namespace="snow-demo-dev-frontend",method="POST",canary="snow-demo-dev-frontend-rollouts-svc-canary-frontend-80"}[30s])  or vector(.1))
