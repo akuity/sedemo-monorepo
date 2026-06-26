@@ -1,6 +1,6 @@
 # rollouts-app
 
-Testing a PR
+test test test
 
 Source application for the [demo-rollouts Kargo pipeline](https://github.com/akuity/sedemo-platform/tree/main/apps/demo-rollouts/kargo) and the [templated-teams](https://github.com/akuity/sedemo-platform/tree/main/templated-teams) demos.
 
