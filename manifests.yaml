@@ -1,0 +1,85 @@
+---
+# Source: deploy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rollouts-svc
+  annotations:
+    prometheus.io/fastscrape: 'true'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: rollouts-app
+---
+# Source: deploy/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollouts-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rollouts-app
+  template:
+    metadata:
+      labels:
+        app: rollouts-app
+    spec:
+      containers:
+        - image: "argoproj/rollouts-demo:blue"
+          name: rollouts-app
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEMVER
+              value: "blue"
+            - name: STAGE
+              value: prod-amer-east
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+---
+# Source: deploy/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stable-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "demo-rollbacks-prod-amer-east.akpdemoapps.link"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: rollouts-svc
+            port:
+              number: 80
+---
+# Source: deploy/templates/loadgen.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: loadgen
+spec:
+  metrics:
+  - name: load-gen
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: loadgen
+                image: jordi/ab
+                command: [ab,"-n20","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/"]
+              restartPolicy: Never
+          backoffLimit: 1
