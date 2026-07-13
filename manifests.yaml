@@ -29,13 +29,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "argoproj/rollouts-demo:blue"
+        - image: "argoproj/rollouts-demo:bad-red"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "blue"
+              value: "bad-red"
             - name: STAGE
               value: prod-amer-west
             - name: NAMESPACE
