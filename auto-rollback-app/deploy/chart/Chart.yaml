@@ -1,0 +1,12 @@
+apiVersion: v2
+name: deploy
+description: Deployment Helm chart for the Rollouts demo application
+
+
+type: application
+
+
+version: 0.1.0
+
+
+appVersion: "1.0.110"
