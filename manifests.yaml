@@ -60,7 +60,7 @@ spec:
         image: jordi/ab
         command: ["/bin/sh", "-c"]
         args:
-        - "sleep 10 && ab -n2000 -mPOST http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"
+        - "sleep 10 && ab -n200 -mPOST http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"
       restartPolicy: Never
   backoffLimit: 1
 ---
