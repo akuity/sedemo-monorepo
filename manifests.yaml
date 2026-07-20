@@ -51,14 +51,14 @@ kind: Job
 metadata:
   name: loadgen
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
 spec:
   template:
     spec:
       containers:
       - name: loadgen
         image: jordi/ab
-        command: [ab,"-n20","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"]
+        command: [ab,"-n200","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"]
       restartPolicy: Never
   backoffLimit: 1
 ---
