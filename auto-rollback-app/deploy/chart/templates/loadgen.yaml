@@ -10,6 +10,6 @@ spec:
       containers:
       - name: loadgen
         image: jordi/ab
-        command: [ab,"-n200","-mPOST","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/color"]
+        command: ["sleep","10","&&","ab","-n2000","-mPOST","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/color"]
       restartPolicy: Never
   backoffLimit: 1
