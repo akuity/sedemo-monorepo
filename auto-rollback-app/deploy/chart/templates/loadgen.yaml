@@ -1,18 +1,15 @@
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: loadgen
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
-  metrics:
-  - name: load-gen
-    provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: loadgen
-                image: jordi/ab
-                command: [ab,"-n20","-mPOST","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/"]
-              restartPolicy: Never
-          backoffLimit: 1
+  template:
+    spec:
+      containers:
+      - name: loadgen
+        image: jordi/ab
+        command: [ab,"-n20","-mPOST","http://{{  .Release.Namespace }}.{{ .Values.ingress.root_domain }}/"]
+      restartPolicy: Never
+  backoffLimit: 1
