@@ -45,25 +45,6 @@ spec:
   minReadySeconds: 30
   revisionHistoryLimit: 3
 ---
-# Source: deploy/templates/loadgen.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: loadgen
-  annotations:
-    argocd.argoproj.io/hook: PostSync
-spec:
-  template:
-    spec:
-      containers:
-      - name: loadgen
-        image: jordi/ab
-        command: ["/bin/sh", "-c"]
-        args:
-        - "sleep 10 && ab -n200 -mPOST http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"
-      restartPolicy: Never
-  backoffLimit: 1
----
 # Source: deploy/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
