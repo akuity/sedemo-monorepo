@@ -29,13 +29,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "argoproj/rollouts-demo:blue"
+        - image: "argoproj/rollouts-demo:bad-red"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "blue"
+              value: "bad-red"
             - name: STAGE
               value: prod-amer-east
             - name: NAMESPACE
@@ -44,6 +44,23 @@ spec:
                   fieldPath: metadata.namespace
   minReadySeconds: 30
   revisionHistoryLimit: 3
+---
+# Source: deploy/templates/loadgen.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: loadgen
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: loadgen
+        image: jordi/ab
+        command: [ab,"-n20","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"]
+      restartPolicy: Never
+  backoffLimit: 1
 ---
 # Source: deploy/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
@@ -63,23 +80,3 @@ spec:
             name: rollouts-svc
             port:
               number: 80
----
-# Source: deploy/templates/loadgen.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: loadgen
-spec:
-  metrics:
-  - name: load-gen
-    provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: loadgen
-                image: jordi/ab
-                command: [ab,"-n20","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/"]
-              restartPolicy: Never
-          backoffLimit: 1
