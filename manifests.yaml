@@ -58,7 +58,9 @@ spec:
       containers:
       - name: loadgen
         image: jordi/ab
-        command: ["sleep","10","&&","ab","-n2000","-mPOST","http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"]
+        command: ["/bin/sh", "-c"]
+        args:
+        - "sleep 10 && ab -n2000 -mPOST http://demo-rollbacks-prod-amer-east.akpdemoapps.link/color"
       restartPolicy: Never
   backoffLimit: 1
 ---
