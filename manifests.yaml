@@ -106,7 +106,7 @@ spec:
               containers:
               - name: loadgen
                 image: jordi/ab
-                command: [ab,"-n20","-mPOST","http://demo-prod-amer-west.akpdemoapps.link/"]
+                command: [ab,"-n20","-mPOST","http://demo-prod-amer-west.akpdemoapps.link/color"]
               restartPolicy: Never
           backoffLimit: 1
 ---
@@ -126,13 +126,13 @@ spec:
         app: rollouts-app
     spec:
       containers:
-        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:48-red"
+        - image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:49-green"
           name: rollouts-app
           ports:
             - containerPort: 8080
           env:
             - name: SEMVER
-              value: "48-red"
+              value: "49-green"
             - name: STAGE
               value: prod-amer-west
             - name: NAMESPACE
