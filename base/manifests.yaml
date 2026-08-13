@@ -21,7 +21,7 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 3
-  minReadySeconds: 30
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: rollouts-app
