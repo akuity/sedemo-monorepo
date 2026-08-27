@@ -14,6 +14,6 @@ spec:
               containers:
               - name: loadgen
                 image: jordi/ab
-                command: [ab,"-n20","-mPOST","http://team-eddie-dev.akpdemoapps.link/"]
+                command: [ab,"-n20","-mPOST","http://team-eddie-dev.akpdemoapps.link/color"]
               restartPolicy: Never
           backoffLimit: 1
