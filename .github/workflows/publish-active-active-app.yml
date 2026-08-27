@@ -1,5 +1,5 @@
 name: Publish new active-active app image
-run-name: Publish new image of rollouts binary
+run-name: Publish new images of active-active binary
 
 on:
   push:
