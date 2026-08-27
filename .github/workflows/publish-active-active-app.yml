@@ -66,6 +66,31 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.run_number }}-${{ env.APP_COLOR }}
+      - name: Build and push Test image
+        uses: docker/build-push-action@v5
+        id: push-test
+        with:
+          context: active-active/test-harness
+          push: true
+          build-args: |
+            COLOR=${{ env.APP_COLOR }}
+          labels: |
+            org.opencontainers.image.title="Rollouts App"
+            org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title="Rollouts App"
+            index,manifest:org.opencontainers.image.description="A visualization app for Kubernetes progressive rollouts"
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.version=${{ github.run_number }}-${{ env.APP_COLOR }}
+            index,manifest:org.opencontainers.image.url=${{ github.repositoryUrl }}
+            index,manifest:org.opencontainers.image.source=${{ github.repositoryUrl }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}-test:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}-test:${{ github.run_number }}-${{ env.APP_COLOR }}
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
