@@ -1,0 +1,61 @@
+---
+# Source: deploy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatekeeper-svc
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: gatekeeper-app
+---
+# Source: deploy/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatekeeper-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gatekeeper-app
+  template:
+    metadata:
+      labels:
+        app: gatekeeper-app
+    spec:
+      containers:
+        - image: "ghcr.io/akuity/sedemo-monorepo-gatekeeper-app:efb1fe45b891acc55d43b4e071aec4bde6461869"
+          name: gatekeeper-app
+          ports:
+            - containerPort: 80
+          env:
+            - name: STAGE
+              value: prod
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+  minReadySeconds: 10
+  revisionHistoryLimit: 3
+---
+# Source: deploy/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gatekeeper-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "gatekeeper-prod.akpdemoapps.link"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: gatekeeper-svc
+            port:
+              number: 80
