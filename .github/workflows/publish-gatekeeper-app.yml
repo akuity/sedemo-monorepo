@@ -1,0 +1,85 @@
+name: Publish gatekeeper-app image
+run-name: Publish gatekeeper-app image${{ inputs.skip_publish && ' (build only, publish skipped)' || '' }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'gatekeeper-app/**'
+      - '.github/workflows/publish-gatekeeper-app.yml'
+  workflow_dispatch:
+    inputs:
+      skip_publish:
+        description: 'Build the image but do not push it (simulates a commit with no matching image yet)'
+        type: boolean
+        default: false
+
+permissions:
+  packages: write
+  attestations: write
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-gatekeeper-app
+
+jobs:
+  publish:
+    defaults:
+      run:
+        working-directory: gatekeeper-app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log in to GitHub Container Registry
+        if: ${{ !inputs.skip_publish }}
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        id: push
+        with:
+          context: gatekeeper-app
+          push: ${{ !inputs.skip_publish }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title="Gatekeeper App"
+            org.opencontainers.image.description="Trivial static app for the gatekeeper-stage Kargo demo"
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      - name: Generate artifact attestation
+        if: ${{ !inputs.skip_publish }}
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  cleanup:
+    name: ghcr.io cleanup action
+    if: ${{ !inputs.skip_publish }}
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          keep-n-tagged: 10
+          delete-ghost-images: true
+          delete-orphaned-images: true
+          delete-untagged: true
+          packages: sedemo-monorepo-gatekeeper-app
