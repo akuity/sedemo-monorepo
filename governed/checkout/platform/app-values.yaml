@@ -1,0 +1,64 @@
+# Tenant: checkout. Its own pipeline before prod, set up by the team without the platform team:
+#
+#   dev ──► qa ──► staging ──► prod     (prod is the platform's, same for everyone)
+#                     └──► smoke-test
+#
+# qa: its own environment, smoke-tested. smoke-test: checks the staging app responds. Extra scans in dev and staging.
+
+image:
+  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+  selectionStrategy: NewestBuild
+  tagRegex: '^\d*-[a-z]*$'
+
+ingress:
+  custom_prefix: checkout-gov
+
+rollouts:
+  enabled: true
+
+environments:
+  staging: true
+
+labels:
+  purpose: checkout-api
+
+pipeline:
+  dev:
+    extraSteps:
+    - uses: opa-test
+      as: manifest-check
+      continueOnError: true
+      config:
+        path: ./out
+  staging:
+    # Staging takes Freight from qa instead of dev.
+    after: [qa]
+    extraSteps:
+    - uses: grype
+      as: second-scan
+      continueOnError: true
+      config:
+        image: ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}
+  extraStages:
+  - name: qa
+    after: dev
+    deploy: true
+    autoPromote: true
+    steps:
+    - uses: http
+      as: qa-smoke-test
+      retry:
+        timeout: 5m
+      config:
+        method: GET
+        url: https://qa.checkout-gov.akpdemoapps.link/
+        successExpression: response.status == 200
+  - name: smoke-test
+    after: staging
+    steps:
+    - uses: http
+      as: check-staging
+      config:
+        method: GET
+        url: https://staging.checkout-gov.akpdemoapps.link/
+        successExpression: response.status == 200

@@ -1,0 +1,28 @@
+# Tenant: reports. Deploys with its own GitHub Actions workflow instead of Argo CD.
+# Kargo runs the workflow at each stage, and prod runs the same prod-controls first
+# (minus the manifest policy check: Kargo never sees this team's manifests).
+
+image:
+  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+  selectionStrategy: NewestBuild
+  tagRegex: '^\d*-[a-z]*$'
+
+deploy:
+  method: github-actions
+  githubActions:
+    # The demo workflow in sedemo-platform (takes environment and version).
+    repo: https://github.com/akuity/sedemo-platform
+    workflow: example-github-action.yaml
+    ref: main
+
+environments:
+  staging: true
+
+pipeline:
+  staging:
+    extraSteps:
+    - uses: grype
+      as: second-scan
+      continueOnError: true
+      config:
+        image: ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}

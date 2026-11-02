@@ -1,0 +1,20 @@
+# Tenant: payments
+# The plain golden path. No extra steps or stages.
+
+image:
+  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+  selectionStrategy: NewestBuild
+  tagRegex: '^\d*-[a-z]*$'
+
+ingress:
+  custom_prefix: payments-gov
+
+rollouts:
+  enabled: true
+
+environments:
+  staging: true
+
+# Required by the prod policy check (policies/prod-policies.yaml).
+labels:
+  purpose: payments-api
