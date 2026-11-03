@@ -73,6 +73,14 @@ on:
         description: "Extra steps in staging (tier 2), comma-separated, in order. Same list as devSteps."
         type: string
         default: ""
+      devCustomSteps:
+        description: "Free-form dev steps, as a YAML/JSON list, run after devSteps. E.g. [{uses: http, as: ping, config: {method: GET, url: 'https://example.com', successExpression: 'response.status == 200'}}]. Checked by the platform guardrails."
+        type: string
+        default: ""
+      stagingCustomSteps:
+        description: "Free-form staging steps, as a YAML/JSON list, run after stagingSteps. Same format as devCustomSteps."
+        type: string
+        default: ""
       stepsBlocking:
         description: "Extra steps block the promotion when they fail (off = report only). http and notifications never block; wait-for-approval always does."
         type: boolean
@@ -112,6 +120,8 @@ jobs:
       SLACK: ${{ inputs.slackEnabled }}
       DEV_STEPS: ${{ inputs.devSteps }}
       STAGING_STEPS: ${{ inputs.stagingSteps }}
+      DEV_CUSTOM: ${{ inputs.devCustomSteps }}
+      STAGING_CUSTOM: ${{ inputs.stagingCustomSteps }}
       BLOCKING: ${{ inputs.stepsBlocking }}
       QA: ${{ inputs.qaStage }}
       SMOKE: ${{ inputs.smokeTestStage }}
@@ -176,6 +186,14 @@ jobs:
                 fail "${env}Steps: '$s' needs the rendered manifests or the app's URL, which only Argo CD tenants have."
               fi
             done
+
+            # Free-form steps: only the shape is checked here. Which steps and
+            # settings are allowed is up to the platform guardrails (next steps).
+            var="$(echo "$env" | tr a-z A-Z)_CUSTOM"
+            if [ -n "${!var}" ]; then
+              printf '%s' "${!var}" | yq -e 'tag == "!!seq" and length > 0 and all_c(tag == "!!map" and has("uses"))' >/dev/null 2>&1 \
+                || fail "${env}CustomSteps must be a YAML or JSON list of steps, each with 'uses', e.g. [{uses: hello-world, config: {message: hi}}]."
+            fi
           done
 
       - name: Write app-values.yaml
@@ -266,6 +284,19 @@ jobs:
             done
           done
           [ -z "$NOTES" ] || printf "## Notes on the extra steps\n\n$NOTES\n" >> "$GITHUB_STEP_SUMMARY"
+
+          # Free-form steps go after the preset ones, exactly as written.
+          for env in dev staging; do
+            var="$(echo "$env" | tr a-z A-Z)_CUSTOM"
+            [ -n "${!var}" ] || continue
+            export CUSTOM="${!var}"
+            y ".pipeline.$env.extraSteps += (strenv(CUSTOM) | from_yaml | (... style=\"\"))"
+            DUP="$(yq ".pipeline.$env.extraSteps[].as | select(. != null)" "$BODY" | sort | uniq -d | head -1)"
+            if [ -n "$DUP" ]; then
+              echo "::error::${env}CustomSteps: the alias '$DUP' is used twice in $env (preset steps are named $env-<step>)."
+              exit 1
+            fi
+          done
 
           # Tier 3: the team's own stages
           if [ "$QA" = "true" ]; then
