@@ -1,0 +1,150 @@
+# Tenant: rader. Created by the Create Governed Project workflow
+# (run by dhpup, https://github.com/akuity/sedemo-monorepo/actions/runs/41710212899).
+# Settings reference: sedemo-platform/governed-teams/kargo-chart/values.yaml
+
+image:
+  repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+  selectionStrategy: NewestBuild
+  tagRegex: '^\d*-[a-z]*$'
+ingress:
+  custom_prefix: rader-gov
+rollouts:
+  enabled: true
+replicaCount: 1
+environments:
+  staging: true
+labels:
+  purpose: rader-api
+pipeline:
+  dev:
+    extraSteps:
+      - uses: random-number
+        as: dev-random-number
+        continueOnError: false
+        config:
+          range: 100
+      - uses: trivy-image
+        as: dev-trivy-image
+        continueOnError: false
+        config:
+          image: ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}
+  extraStages:
+    - name: staging-post
+      after: staging
+      autoPromote: true
+      steps:
+        - uses: hello-world
+          as: staging-hello-world
+          continueOnError: false
+          config:
+            message: Hello from gov-rader, deployed to staging
+    - name: smoke-test
+      after: staging
+      steps:
+        - uses: http
+          as: check-staging
+          config:
+            method: GET
+            url: https://staging.rader-gov.akpdemoapps.link/
+            successExpression: response.status == 200
+
+# ---------------------------------------------------------------------------
+# Adding steps and stages later
+#
+# Edit this file and push to main. The platform checks it first: if something
+# isn't allowed, the error shows on the gov-rader-kargo app in Argo CD and
+# nothing changes. Prod's checks are the same for every team and can't be
+# changed here.
+#
+# Steps go in a list under pipeline.dev.extraSteps or pipeline.staging.extraSteps
+# (add the keys above if they aren't there). They run after the manifests are
+# rendered and before anything is deployed. For steps after a deploy, put them
+# in a stage of your own that comes after it (see the stages example below).
+# Each step takes:
+#   uses             the step (one of the examples below)
+#   as               a name, unique within the environment
+#   config           the step's settings
+#   continueOnError  true: report a failure but don't stop the promotion
+#   if               only run when this Kargo expression is true
+#   retry            e.g. {timeout: 5m}
+#
+# Every step the platform allows:
+#
+# - uses: http                  # call a URL and check the response
+#   as: my-check
+#   retry: {timeout: 2m}
+#   config:
+#     method: GET
+#     url: https://dev.rader-gov.akpdemoapps.link/
+#     successExpression: response.status == 200
+# - uses: trivy-image           # scan the image for vulnerabilities
+#   as: my-trivy
+#   continueOnError: true
+#   config:
+#     image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}"
+# - uses: grype                 # a second vulnerability scanner
+#   as: my-grype
+#   continueOnError: true
+#   config:
+#     image: "ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}"
+# - uses: hello-world           # print a message
+#   as: my-hello
+#   config:
+#     message: "Promoting to ${{ ctx.stage }}"
+# - uses: random-number         # pick a number from 1 to range
+#   as: my-roll
+#   config:
+#     range: 6
+# - uses: teams-notify          # needs a teams-webhook Secret in the gov-rader project
+#   as: my-teams
+#   continueOnError: true
+#   config:
+#     webhookURL: "${{ secret('teams-webhook')['teams-webhook'] }}"
+#     title: "Promoting to ${{ ctx.stage }}"
+#     message: "New release"
+#     stage: "${{ ctx.stage }}"
+#     freight: "${{ ctx.targetFreight.name }}"
+# - uses: send-message          # post to Slack; also set notifications.slack.enabled: true
+#   as: my-slack
+#   continueOnError: true
+#   config:
+#     channel: {kind: MessageChannel, name: kargo-notifications}
+#     message: "Promoting to ${{ ctx.stage }}"
+# - uses: wait-for-approval     # pause until someone approves in Kargo
+#   as: my-approval
+#   config: {}
+# - uses: opa-test              # OPA (conftest) policies on the rendered manifests
+#   as: my-opa
+#   config:
+#     path: ./out
+# - uses: kyverno-policy-apply  # prod's Kyverno policies, run early
+#   as: my-policy
+#   config:
+#     policy: ./chart/governed-teams/policies/prod-policies.yaml
+#     resource: ./out/manifests.yaml
+# - uses: gitleaks-scan         # look for secrets in the app's source
+#   as: my-secret-scan
+#   config:
+#     path: ./src/rollouts-app
+# - uses: extract-images        # list the images in the rendered manifests
+#   as: my-images
+#   config:
+#     path: out
+#
+# Your own stages (up to 5) go under pipeline.extraStages. For example, a qa
+# environment between dev and staging, and steps that run after staging deploys:
+#
+# pipeline:
+#   extraStages:
+#   - name: my-qa               # lowercase; not dev, staging or anything with "prod"
+#     after: dev                # dev, staging, or one of your stages listed above it
+#     deploy: true              # a real environment; false = steps only
+#     autoPromote: true
+#   - name: my-check
+#     after: staging
+#     steps:
+#     - uses: hello-world
+#       config:
+#         message: "staging looks good"
+#   staging:
+#     after: [my-qa]            # staging waits for my-qa instead of dev
