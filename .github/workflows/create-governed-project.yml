@@ -65,24 +65,108 @@ on:
         description: "Send promotion events to the kargo-notifications Slack channel."
         type: boolean
         default: false
-      devSteps:
-        description: "Extra steps in dev (tier 2), comma-separated, in order. Any of: trivy-image, grype, opa-test, kyverno-policy-apply, gitleaks-scan, extract-images, http, hello-world, random-number, teams-notify, send-message, wait-for-approval"
-        type: string
-        default: ""
-      stagingSteps:
-        description: "Extra steps in staging (tier 2), comma-separated, in order. Same list as devSteps."
-        type: string
-        default: ""
+      devStep1:
+        description: "Dev step 1 (runs first). Before deploy: runs on the rendered manifests, before anything is deployed. After deploy: runs in an automatic dev-post stage that staging waits for."
+        type: choice
+        default: none
+        options:
+          - none
+          - trivy-image (before deploy)
+          - grype (before deploy)
+          - opa-test (before deploy)
+          - kyverno-policy-apply (before deploy)
+          - gitleaks-scan (before deploy)
+          - extract-images (before deploy)
+          - hello-world (before deploy)
+          - random-number (before deploy)
+          - teams-notify (before deploy)
+          - send-message (before deploy)
+          - wait-for-approval (before deploy)
+          - http (after deploy)
+          - hello-world (after deploy)
+          - random-number (after deploy)
+          - teams-notify (after deploy)
+          - send-message (after deploy)
+          - wait-for-approval (after deploy)
+      devStep2:
+        description: "Dev step 2 (runs after step 1, in the same before/after group)."
+        type: choice
+        default: none
+        options:
+          - none
+          - trivy-image (before deploy)
+          - grype (before deploy)
+          - opa-test (before deploy)
+          - kyverno-policy-apply (before deploy)
+          - gitleaks-scan (before deploy)
+          - extract-images (before deploy)
+          - hello-world (before deploy)
+          - random-number (before deploy)
+          - teams-notify (before deploy)
+          - send-message (before deploy)
+          - wait-for-approval (before deploy)
+          - http (after deploy)
+          - hello-world (after deploy)
+          - random-number (after deploy)
+          - teams-notify (after deploy)
+          - send-message (after deploy)
+          - wait-for-approval (after deploy)
+      stagingStep1:
+        description: "Staging step 1 (runs first). After deploy: runs in an automatic staging-post stage, which reports but can't hold back prod."
+        type: choice
+        default: none
+        options:
+          - none
+          - trivy-image (before deploy)
+          - grype (before deploy)
+          - opa-test (before deploy)
+          - kyverno-policy-apply (before deploy)
+          - gitleaks-scan (before deploy)
+          - extract-images (before deploy)
+          - hello-world (before deploy)
+          - random-number (before deploy)
+          - teams-notify (before deploy)
+          - send-message (before deploy)
+          - wait-for-approval (before deploy)
+          - http (after deploy)
+          - hello-world (after deploy)
+          - random-number (after deploy)
+          - teams-notify (after deploy)
+          - send-message (after deploy)
+          - wait-for-approval (after deploy)
+      stagingStep2:
+        description: "Staging step 2 (runs after step 1, in the same before/after group)."
+        type: choice
+        default: none
+        options:
+          - none
+          - trivy-image (before deploy)
+          - grype (before deploy)
+          - opa-test (before deploy)
+          - kyverno-policy-apply (before deploy)
+          - gitleaks-scan (before deploy)
+          - extract-images (before deploy)
+          - hello-world (before deploy)
+          - random-number (before deploy)
+          - teams-notify (before deploy)
+          - send-message (before deploy)
+          - wait-for-approval (before deploy)
+          - http (after deploy)
+          - hello-world (after deploy)
+          - random-number (after deploy)
+          - teams-notify (after deploy)
+          - send-message (after deploy)
+          - wait-for-approval (after deploy)
       devCustomSteps:
-        description: "Your own dev steps, run after devSteps. Delete the leading # to use the example, or replace it. One step {...} or several [{...}, {...}]. Checked by the platform guardrails. The new app-values.yaml lists an example of every allowed step."
+        description: "Your own dev steps, run before the deploy, after the dropdown steps. Delete the leading # to use the example, or replace it. One step {...} or several [{...}, {...}]. Checked by the platform guardrails. The new app-values.yaml lists an example of every allowed step."
         type: string
         default: '# {uses: http, as: my-check, config: {method: GET, url: "https://example.com", successExpression: "response.status == 200"}}'
       stagingCustomSteps:
-        description: "Your own staging steps, run after stagingSteps. Same format as devCustomSteps; leave the # to skip."
+        description: "Your own staging steps, run before the deploy, after the dropdown steps. Same format as devCustomSteps; leave the # to skip."
         type: string
         default: '# {uses: wait-for-approval, as: my-approval, config: {}}'
       stepsBlocking:
-        description: "Extra steps block the promotion when they fail (off = report only). http and notifications never block; wait-for-approval always does."
+        description: "Extra steps block the promotion when they fail (off = report only). Notifications never block; wait-for-approval always does."
         type: boolean
         default: false
       qaStage:
@@ -118,8 +202,10 @@ jobs:
       REPLICAS: ${{ inputs.replicaCount }}
       S3: ${{ inputs.s3Enabled }}
       SLACK: ${{ inputs.slackEnabled }}
-      DEV_STEPS: ${{ inputs.devSteps }}
-      STAGING_STEPS: ${{ inputs.stagingSteps }}
+      DEV_STEP1: ${{ inputs.devStep1 }}
+      DEV_STEP2: ${{ inputs.devStep2 }}
+      STAGING_STEP1: ${{ inputs.stagingStep1 }}
+      STAGING_STEP2: ${{ inputs.stagingStep2 }}
       DEV_CUSTOM: ${{ inputs.devCustomSteps }}
       STAGING_CUSTOM: ${{ inputs.stagingCustomSteps }}
       BLOCKING: ${{ inputs.stepsBlocking }}
@@ -171,19 +257,25 @@ jobs:
           # platform-controls.yaml) and one this workflow knows how to configure.
           ALLOWED="$(yq '.allowedTenantSteps[]' .platform/governed-teams/kargo-chart/platform-controls.yaml)"
           KNOWN="trivy-image grype opa-test kyverno-policy-apply gitleaks-scan extract-images http hello-world random-number teams-notify send-message wait-for-approval"
-          # These read the rendered manifests or the source checkout, which only Argo CD tenants have.
+          # These read the rendered manifests or the source checkout, or check the
+          # app's URL, which only Argo CD tenants have.
           NEEDS_WORKSPACE="opa-test kyverno-policy-apply gitleaks-scan extract-images http"
           for env in dev staging; do
-            var="$(echo "$env" | tr a-z A-Z)_STEPS"
-            list="$(echo "${!var}" | tr ',' ' ' | xargs -n1 2>/dev/null || true)"
-            [ -z "$(echo "$list" | sort | uniq -d)" ] || fail "${env}Steps lists $(echo "$list" | sort | uniq -d | head -1) twice."
-            for s in $list; do
+            ENV="$(echo "$env" | tr a-z A-Z)"
+            v1="${ENV}_STEP1"; v2="${ENV}_STEP2"
+            [ "${!v1}" = "none" ] || [ "${!v1}" != "${!v2}" ] || fail "${env}Step1 and ${env}Step2 are both '${!v1}'. Pick it once."
+            for v in "${!v1}" "${!v2}"; do
+              [ "$v" = "none" ] && continue
+              s="${v%% *}"
               echo "$ALLOWED" | grep -qx -- "$s" \
-                || fail "${env}Steps: '$s' isn't on the platform's allowed step list: $(echo $ALLOWED | tr ' ' ',')."
+                || fail "$env step '$s' isn't on the platform's allowed step list: $(echo $ALLOWED | tr ' ' ',')."
               [[ " $KNOWN " == *" $s "* ]] \
-                || fail "${env}Steps: '$s' is allowed by the platform, but this workflow doesn't know how to configure it yet."
+                || fail "$env step '$s' is allowed by the platform, but this workflow doesn't know how to configure it yet."
               if [ "$DEPLOY_METHOD" != "argocd" ] && [[ " $NEEDS_WORKSPACE " == *" $s "* ]]; then
-                fail "${env}Steps: '$s' needs the rendered manifests or the app's URL, which only Argo CD tenants have."
+                fail "$env step '$s' needs the rendered manifests or the app's URL, which only Argo CD tenants have."
+              fi
+              if [ "$v" = "wait-for-approval (after deploy)" ] && [ "$env" = "staging" ]; then
+                fail "wait-for-approval after the staging deploy wouldn't hold anything back: prod only takes releases from staging, with its own change approval. Use 'wait-for-approval (before deploy)' to approve releases into staging."
               fi
             done
 
@@ -235,13 +327,17 @@ jobs:
           [ "$SLACK" = "true" ] && y '.notifications.slack.enabled = true'
 
           # Tier 2: extra steps in dev and staging, from the platform's allowlist.
-          # They run after the manifests render into ./out and before anything is
-          # committed. ./chart is sedemo-platform, ./src is this repo (Argo CD tenants).
+          # Before deploy: in the environment's own Stage, after the manifests render
+          # into ./out and before anything is committed (./chart is sedemo-platform,
+          # ./src is this repo; Argo CD tenants only). After deploy: in an automatic
+          # <env>-post Stage that runs once the environment has been promoted.
           export TAG_EXPR="${KARGO_OPEN}{{ imageFrom('${IMAGE_REPO}').Tag }}"
           export FREIGHT_EXPR="${KARGO_OPEN}{{ ctx.targetFreight.name }}"
           export TEAMS_HOOK_EXPR="${KARGO_OPEN}{{ secret(\"teams-webhook\")[\"teams-webhook\"] }}"
-          add_step() { # $1 = dev|staging, $2 = step
+          add_step() { # $1 = dev|staging, $2 = step, $3 = before|after
             export ENV_NAME="$1" STEP="$2" ALIAS="$1-$2" STEP_CONTINUE="$CONTINUE"
+            RETRY=""
+            if [ "$3" = "after" ]; then VERB="deployed to"; else VERB="promoting to"; fi
             case "$2" in
               trivy-image|grype) CONFIG='{"image": strenv(IMAGE_REF)}' ;;
               opa-test)          CONFIG='{"path": "./out"}' ;;
@@ -251,43 +347,68 @@ jobs:
               gitleaks-scan)     # the same folder prod's secret scan checks
                 export SCAN_PATH="./src/$(yq '.checks.secretScan.path' .platform/governed-teams/kargo-chart/platform-controls.yaml)"
                 CONFIG='{"path": strenv(SCAN_PATH)}' ;;
-              http) # Runs before this promotion deploys, so it checks the version
-                    # already running (and fails on the first promotion): never blocks.
-                export URL="https://$1.$PREFIX.akpdemoapps.link/" STEP_CONTINUE=true
+              http) # after deploy only: checks the version just deployed. Retries
+                    # while Argo CD syncs and, on a first deploy, the certificate is issued.
+                export URL="https://$1.$PREFIX.akpdemoapps.link/"
+                RETRY=', "retry": {"timeout": "5m"}'
                 CONFIG='{"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}' ;;
               hello-world)
-                export MSG="Hello from gov-$NAME, promoting to $1"
+                export MSG="Hello from gov-$NAME, $VERB $1"
                 CONFIG='{"message": strenv(MSG)}' ;;
               random-number)     CONFIG='{"range": 100}' ;;
               teams-notify) # needs a teams-webhook Secret in the gov-<name> project
-                export TITLE="gov-$NAME: promoting to $1" MSG="$IMAGE_REPO:$TAG_EXPR" STEP_CONTINUE=true
+                export TITLE="gov-$NAME: $VERB $1" MSG="$IMAGE_REPO:$TAG_EXPR" STEP_CONTINUE=true
                 CONFIG='{"webhookURL": strenv(TEAMS_HOOK_EXPR), "title": strenv(TITLE), "message": strenv(MSG), "stage": strenv(ENV_NAME), "freight": strenv(FREIGHT_EXPR)}' ;;
               send-message) # posts to the kargo-notifications channel (slackEnabled)
-                export MSG="gov-$NAME: promoting $IMAGE_REPO:$TAG_EXPR to $1" STEP_CONTINUE=true
+                export MSG="gov-$NAME: $VERB $1: $IMAGE_REPO:$TAG_EXPR" STEP_CONTINUE=true
                 CONFIG='{"channel": {"kind": "MessageChannel", "name": "kargo-notifications"}, "message": strenv(MSG)}' ;;
-              wait-for-approval) # pauses the promotion until someone approves it in Kargo
+              wait-for-approval) # pauses until someone approves it in Kargo
                 STEP_CONTINUE=false
                 CONFIG='{}' ;;
             esac
-            y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(STEP_CONTINUE), \"config\": $CONFIG}]"
+            STEP_YAML="{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(STEP_CONTINUE)${RETRY:-}, \"config\": $CONFIG}"
+            RETRY=""
+            if [ "$3" = "after" ]; then
+              # The <env>-post stage: steps only, promoted automatically after <env>.
+              export POST="$1-post"
+              if [ -z "$(yq '(.pipeline.extraStages // [])[] | select(.name == strenv(POST)) | .name' "$BODY")" ]; then
+                y '.pipeline.extraStages += [{"name": strenv(POST), "after": strenv(ENV_NAME), "autoPromote": true, "steps": []}]'
+              fi
+              y "(.pipeline.extraStages[] | select(.name == strenv(POST))).steps += [$STEP_YAML]"
+            else
+              y ".pipeline.$1.extraSteps += [$STEP_YAML]"
+            fi
           }
           NOTES=""
           for env in dev staging; do
-            var="$(echo "$env" | tr a-z A-Z)_STEPS"
-            for s in $(echo "${!var}" | tr ',' ' '); do
-              add_step "$env" "$s"
+            ENV="$(echo "$env" | tr a-z A-Z)"
+            # Picked order, within each group: step 1, then step 2.
+            for v1 in "${ENV}_STEP1" "${ENV}_STEP2"; do
+              v="${!v1}"
+              [ "$v" = "none" ] && continue
+              s="${v%% *}"
+              case "$v" in *"(after deploy)") when=after ;; *) when=before ;; esac
+              add_step "$env" "$s" "$when"
               case "$s" in
                 send-message) y '.notifications.slack.enabled = true'
                   NOTES="$NOTES- send-message posts to the kargo-notifications Slack channel, so Slack notifications are turned on.\n" ;;
                 teams-notify)
                   NOTES="$NOTES- teams-notify needs a Secret named \`teams-webhook\` (key \`teams-webhook\`) in the \`gov-$NAME\` Kargo project. Until it exists the step reports an error but doesn't block.\n" ;;
                 wait-for-approval)
-                  NOTES="$NOTES- wait-for-approval in $env: every promotion to $env waits for someone to approve it in Kargo.\n" ;;
-                http)
-                  NOTES="$NOTES- http in $env checks the version already running in $env (tenant steps run before the deploy), so it fails on the first promotion. It's report-only.\n" ;;
+                  if [ "$when" = "before" ]; then
+                    NOTES="$NOTES- wait-for-approval before the $env deploy: every promotion to $env waits for someone to approve it in Kargo.\n"
+                  else
+                    NOTES="$NOTES- wait-for-approval after the $env deploy: staging waits until someone approves the release in the $env-post stage.\n"
+                  fi ;;
               esac
             done
           done
+          if yq -e '(.pipeline.extraStages // [])[] | select(.name == "dev-post")' "$BODY" >/dev/null 2>&1; then
+            NOTES="$NOTES- dev's after-deploy steps run in a \`dev-post\` stage, promoted automatically after dev. Staging only takes releases that passed it.\n"
+          fi
+          if yq -e '(.pipeline.extraStages // [])[] | select(.name == "staging-post")' "$BODY" >/dev/null 2>&1; then
+            NOTES="$NOTES- staging's after-deploy steps run in a \`staging-post\` stage, promoted automatically after staging. It reports only: prod always takes releases straight from staging.\n"
+          fi
           [ -z "$NOTES" ] || printf "## Notes on the extra steps\n\n$NOTES\n" >> "$GITHUB_STEP_SUMMARY"
 
           # Free-form steps go after the preset ones, exactly as written.
@@ -308,8 +429,7 @@ jobs:
 
           # Tier 3: the team's own stages
           if [ "$QA" = "true" ]; then
-            y '.pipeline.extraStages += [{"name": "qa", "after": "dev", "deploy": true, "autoPromote": true}]
-              | .pipeline.staging.after = ["qa"]'
+            y '.pipeline.extraStages += [{"name": "qa", "after": "dev", "deploy": true, "autoPromote": true}]'
             if [ "$DEPLOY_METHOD" = "argocd" ]; then
               export URL="https://qa.$PREFIX.akpdemoapps.link/"
               y '(.pipeline.extraStages[] | select(.name == "qa")).steps = [{"uses": "http", "as": "qa-smoke-test", "retry": {"timeout": "5m"},
@@ -320,6 +440,15 @@ jobs:
             export URL="https://staging.$PREFIX.akpdemoapps.link/"
             y '.pipeline.extraStages += [{"name": "smoke-test", "after": "staging", "steps": [{"uses": "http", "as": "check-staging",
                 "config": {"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}}]}]'
+          fi
+
+          # Staging waits for qa and dev-post when they exist (otherwise for dev).
+          AFTER=""
+          [ "$QA" = "true" ] && AFTER="$AFTER qa"
+          yq -e '(.pipeline.extraStages // [])[] | select(.name == "dev-post")' "$BODY" >/dev/null 2>&1 && AFTER="$AFTER dev-post"
+          if [ -n "$AFTER" ]; then
+            export AFTER
+            y '.pipeline.staging.after = (strenv(AFTER) | trim | split(" "))'
           fi
 
           # Commented-out examples at the end of the file, so the team can add
@@ -430,7 +559,9 @@ jobs:
             echo "#"
             echo "# Steps go in a list under pipeline.dev.extraSteps or pipeline.staging.extraSteps"
             echo "# (add the keys above if they aren't there). They run after the manifests are"
-            echo "# rendered and before anything is deployed. Each step takes:"
+            echo "# rendered and before anything is deployed. For steps after a deploy, put them"
+            echo "# in a stage of your own that comes after it (see the stages example below)."
+            echo "# Each step takes:"
             echo "#   uses             the step (one of the examples below)"
             echo "#   as               a name, unique within the environment"
             echo "#   config           the step's settings"
@@ -443,7 +574,7 @@ jobs:
             sed 's/^/# /' "$STEP_EX"
             echo "#"
             echo "# Your own stages (up to 5) go under pipeline.extraStages. For example, a qa"
-            echo "# environment between dev and staging, and a check after staging:"
+            echo "# environment between dev and staging, and steps that run after staging deploys:"
             echo "#"
             sed 's/^/# /' "$STAGE_EX"
           } > "$FILE"
