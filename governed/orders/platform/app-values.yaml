@@ -1,0 +1,26 @@
+   # Tenant: orders. A new team: the golden path plus one check of its own.
+   image:
+     repository: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+     selectionStrategy: NewestBuild
+     tagRegex: '^\d*-[a-z]*$'
+
+   ingress:
+     custom_prefix: orders-gov
+
+   rollouts:
+     enabled: true
+
+   environments:
+     staging: true
+
+   labels:
+     purpose: orders-api    # required by the prod policy check
+
+   pipeline:
+     dev:
+       extraSteps:
+       - uses: trivy-image          # picked from the platform's list of allowed steps
+         as: early-scan
+         continueOnError: true      # report only: prod's own scan is the one that blocks
+         config:
+           image: ghcr.io/akuity/sedemo-monorepo-rollouts-app:${{ imageFrom('ghcr.io/akuity/sedemo-monorepo-rollouts-app').Tag }}
