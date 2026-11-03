@@ -74,13 +74,13 @@ on:
         type: string
         default: ""
       devCustomSteps:
-        description: "Free-form dev steps, as a YAML/JSON list, run after devSteps. E.g. [{uses: http, as: ping, config: {method: GET, url: 'https://example.com', successExpression: 'response.status == 200'}}]. Checked by the platform guardrails."
+        description: "Your own dev steps, run after devSteps. Delete the leading # to use the example, or replace it. One step {...} or several [{...}, {...}]. Checked by the platform guardrails. The new app-values.yaml lists an example of every allowed step."
         type: string
-        default: ""
+        default: '# {uses: http, as: my-check, config: {method: GET, url: "https://example.com", successExpression: "response.status == 200"}}'
       stagingCustomSteps:
-        description: "Free-form staging steps, as a YAML/JSON list, run after stagingSteps. Same format as devCustomSteps."
+        description: "Your own staging steps, run after stagingSteps. Same format as devCustomSteps; leave the # to skip."
         type: string
-        default: ""
+        default: '# {uses: wait-for-approval, as: my-approval, config: {}}'
       stepsBlocking:
         description: "Extra steps block the promotion when they fail (off = report only). http and notifications never block; wait-for-approval always does."
         type: boolean
@@ -189,10 +189,15 @@ jobs:
 
             # Free-form steps: only the shape is checked here. Which steps and
             # settings are allowed is up to the platform guardrails (next steps).
+            # Empty or starting with # (the prefilled example) means none.
             var="$(echo "$env" | tr a-z A-Z)_CUSTOM"
-            if [ -n "${!var}" ]; then
-              printf '%s' "${!var}" | yq -e 'tag == "!!seq" and length > 0 and all_c(tag == "!!map" and has("uses"))' >/dev/null 2>&1 \
-                || fail "${env}CustomSteps must be a YAML or JSON list of steps, each with 'uses', e.g. [{uses: hello-world, config: {message: hi}}]."
+            custom="${!var}"; first="${custom#"${custom%%[![:space:]]*}"}"
+            if [ -n "$first" ] && [ "${first:0:1}" != "#" ]; then
+              # One step or a list; every item a map with 'uses'.
+              n="$(printf '%s' "$custom" | yq '[] + . | length' 2>/dev/null)" \
+                && bad="$(printf '%s' "$custom" | yq '([] + .) | [.[] | select(tag != "!!map" or (has("uses") | not))] | length' 2>/dev/null)" \
+                && [ "$n" -gt 0 ] && [ "$bad" -eq 0 ] \
+                || fail "${env}CustomSteps must be one step {uses: ..., config: {...}} or a list [{...}, {...}], each with 'uses'."
             fi
           done
 
@@ -288,9 +293,12 @@ jobs:
           # Free-form steps go after the preset ones, exactly as written.
           for env in dev staging; do
             var="$(echo "$env" | tr a-z A-Z)_CUSTOM"
-            [ -n "${!var}" ] || continue
-            export CUSTOM="${!var}"
-            y ".pipeline.$env.extraSteps += (strenv(CUSTOM) | from_yaml | (... style=\"\"))"
+            export CUSTOM="${!var}"; first="${CUSTOM#"${CUSTOM%%[![:space:]]*}"}"
+            [ -n "$first" ] && [ "${first:0:1}" != "#" ] || continue
+            y ".pipeline.$env.extraSteps += ([] + (strenv(CUSTOM) | from_yaml) | (... style=\"\"))"
+            if [ "$(yq ".pipeline.$env.extraSteps[] | select(.uses == \"send-message\") | .uses" "$BODY")" != "" ]; then
+              y '.notifications.slack.enabled = true'
+            fi
             DUP="$(yq ".pipeline.$env.extraSteps[].as | select(. != null)" "$BODY" | sort | uniq -d | head -1)"
             if [ -n "$DUP" ]; then
               echo "::error::${env}CustomSteps: the alias '$DUP' is used twice in $env (preset steps are named $env-<step>)."
@@ -314,12 +322,130 @@ jobs:
                 "config": {"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}}]}]'
           fi
 
+          # Commented-out examples at the end of the file, so the team can add
+          # steps and stages later by editing it. Filled in with their image and URLs.
+          STEP_EX="$(mktemp)" STAGE_EX="$(mktemp)"
+          if [ "$DEPLOY_METHOD" = "argocd" ]; then
+            CHECK_URL="https://dev.$PREFIX.akpdemoapps.link/"
+          else
+            CHECK_URL="https://example.com/health"
+          fi
+          cat > "$STEP_EX" <<EOF
+          - uses: http                  # call a URL and check the response
+            as: my-check
+            retry: {timeout: 2m}
+            config:
+              method: GET
+              url: $CHECK_URL
+              successExpression: response.status == 200
+          - uses: trivy-image           # scan the image for vulnerabilities
+            as: my-trivy
+            continueOnError: true
+            config:
+              image: "$IMAGE_REF"
+          - uses: grype                 # a second vulnerability scanner
+            as: my-grype
+            continueOnError: true
+            config:
+              image: "$IMAGE_REF"
+          - uses: hello-world           # print a message
+            as: my-hello
+            config:
+              message: "Promoting to ${KARGO_OPEN}{{ ctx.stage }}"
+          - uses: random-number         # pick a number from 1 to range
+            as: my-roll
+            config:
+              range: 6
+          - uses: teams-notify          # needs a teams-webhook Secret in the gov-$NAME project
+            as: my-teams
+            continueOnError: true
+            config:
+              webhookURL: "${KARGO_OPEN}{{ secret('teams-webhook')['teams-webhook'] }}"
+              title: "Promoting to ${KARGO_OPEN}{{ ctx.stage }}"
+              message: "New release"
+              stage: "${KARGO_OPEN}{{ ctx.stage }}"
+              freight: "${KARGO_OPEN}{{ ctx.targetFreight.name }}"
+          - uses: send-message          # post to Slack; also set notifications.slack.enabled: true
+            as: my-slack
+            continueOnError: true
+            config:
+              channel: {kind: MessageChannel, name: kargo-notifications}
+              message: "Promoting to ${KARGO_OPEN}{{ ctx.stage }}"
+          - uses: wait-for-approval     # pause until someone approves in Kargo
+            as: my-approval
+            config: {}
+          EOF
+          if [ "$DEPLOY_METHOD" = "argocd" ]; then
+            cat >> "$STEP_EX" <<EOF
+          - uses: opa-test              # OPA (conftest) policies on the rendered manifests
+            as: my-opa
+            config:
+              path: ./out
+          - uses: kyverno-policy-apply  # prod's Kyverno policies, run early
+            as: my-policy
+            config:
+              policy: ./chart/governed-teams/policies/prod-policies.yaml
+              resource: ./out/manifests.yaml
+          - uses: gitleaks-scan         # look for secrets in the app's source
+            as: my-secret-scan
+            config:
+              path: ./src/rollouts-app
+          - uses: extract-images        # list the images in the rendered manifests
+            as: my-images
+            config:
+              path: out
+          EOF
+          fi
+          cat > "$STAGE_EX" <<EOF
+          pipeline:
+            extraStages:
+            - name: my-qa               # lowercase; not dev, staging or anything with "prod"
+              after: dev                # dev, staging, or one of your stages listed above it
+              deploy: true              # a real environment; false = steps only
+              autoPromote: true
+            - name: my-check
+              after: staging
+              steps:
+              - uses: hello-world
+                config:
+                  message: "staging looks good"
+            staging:
+              after: [my-qa]            # staging waits for my-qa instead of dev
+          EOF
+
           {
             echo "# Tenant: $NAME. Created by the Create Governed Project workflow"
             echo "# (run by $GITHUB_ACTOR, $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
             echo "# Settings reference: sedemo-platform/governed-teams/kargo-chart/values.yaml"
             echo
             cat "$BODY"
+            echo
+            echo "# ---------------------------------------------------------------------------"
+            echo "# Adding steps and stages later"
+            echo "#"
+            echo "# Edit this file and push to main. The platform checks it first: if something"
+            echo "# isn't allowed, the error shows on the gov-$NAME-kargo app in Argo CD and"
+            echo "# nothing changes. Prod's checks are the same for every team and can't be"
+            echo "# changed here."
+            echo "#"
+            echo "# Steps go in a list under pipeline.dev.extraSteps or pipeline.staging.extraSteps"
+            echo "# (add the keys above if they aren't there). They run after the manifests are"
+            echo "# rendered and before anything is deployed. Each step takes:"
+            echo "#   uses             the step (one of the examples below)"
+            echo "#   as               a name, unique within the environment"
+            echo "#   config           the step's settings"
+            echo "#   continueOnError  true: report a failure but don't stop the promotion"
+            echo "#   if               only run when this Kargo expression is true"
+            echo "#   retry            e.g. {timeout: 5m}"
+            echo "#"
+            echo "# Every step the platform allows:"
+            echo "#"
+            sed 's/^/# /' "$STEP_EX"
+            echo "#"
+            echo "# Your own stages (up to 5) go under pipeline.extraStages. For example, a qa"
+            echo "# environment between dev and staging, and a check after staging:"
+            echo "#"
+            sed 's/^/# /' "$STAGE_EX"
           } > "$FILE"
           echo "file=$FILE" >> "$GITHUB_ENV"
           cat "$FILE"
