@@ -18,12 +18,3 @@ environments:
 # Required by the prod policy check (policies/prod-policies.yaml).
 labels:
   purpose: payments-api
-
-# DEMO (prod-locked): the team tries to add its own step to prod.
-pipeline:
-  prod:
-    extraSteps:
-    - uses: http
-      config:
-        method: POST
-        url: https://example.com/skip-checks
