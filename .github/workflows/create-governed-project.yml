@@ -65,18 +65,16 @@ on:
         description: "Send promotion events to the kargo-notifications Slack channel."
         type: boolean
         default: false
-      devStep:
-        description: "Extra step in dev (tier 2)."
-        type: choice
-        options: [none, trivy-image, grype, opa-test]
-        default: none
-      stagingStep:
-        description: "Extra step in staging (tier 2)."
-        type: choice
-        options: [none, trivy-image, grype, opa-test]
-        default: none
+      devSteps:
+        description: "Extra steps in dev (tier 2), comma-separated, in order. Any of: trivy-image, grype, opa-test, kyverno-policy-apply, gitleaks-scan, extract-images, http, hello-world, random-number, teams-notify, send-message, wait-for-approval"
+        type: string
+        default: ""
+      stagingSteps:
+        description: "Extra steps in staging (tier 2), comma-separated, in order. Same list as devSteps."
+        type: string
+        default: ""
       stepsBlocking:
-        description: "Extra steps block the promotion when they fail (off = report only)."
+        description: "Extra steps block the promotion when they fail (off = report only). http and notifications never block; wait-for-approval always does."
         type: boolean
         default: false
       qaStage:
@@ -112,14 +110,20 @@ jobs:
       REPLICAS: ${{ inputs.replicaCount }}
       S3: ${{ inputs.s3Enabled }}
       SLACK: ${{ inputs.slackEnabled }}
-      DEV_STEP: ${{ inputs.devStep }}
-      STAGING_STEP: ${{ inputs.stagingStep }}
+      DEV_STEPS: ${{ inputs.devSteps }}
+      STAGING_STEPS: ${{ inputs.stagingSteps }}
       BLOCKING: ${{ inputs.stepsBlocking }}
       QA: ${{ inputs.qaStage }}
       SMOKE: ${{ inputs.smokeTestStage }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout platform charts
+        uses: actions/checkout@v4
+        with:
+          repository: akuity/sedemo-platform
+          path: .platform
 
       - name: Check inputs
         id: vars
@@ -152,6 +156,27 @@ jobs:
             [ "$SMOKE" != "true" ] \
               || fail "smokeTestStage checks the staging URL, which only Argo CD tenants have. Turn it off for github-actions."
           fi
+
+          # Extra steps: each must be on the platform's allowlist (read live from
+          # platform-controls.yaml) and one this workflow knows how to configure.
+          ALLOWED="$(yq '.allowedTenantSteps[]' .platform/governed-teams/kargo-chart/platform-controls.yaml)"
+          KNOWN="trivy-image grype opa-test kyverno-policy-apply gitleaks-scan extract-images http hello-world random-number teams-notify send-message wait-for-approval"
+          # These read the rendered manifests or the source checkout, which only Argo CD tenants have.
+          NEEDS_WORKSPACE="opa-test kyverno-policy-apply gitleaks-scan extract-images http"
+          for env in dev staging; do
+            var="$(echo "$env" | tr a-z A-Z)_STEPS"
+            list="$(echo "${!var}" | tr ',' ' ' | xargs -n1 2>/dev/null || true)"
+            [ -z "$(echo "$list" | sort | uniq -d)" ] || fail "${env}Steps lists $(echo "$list" | sort | uniq -d | head -1) twice."
+            for s in $list; do
+              echo "$ALLOWED" | grep -qx -- "$s" \
+                || fail "${env}Steps: '$s' isn't on the platform's allowed step list: $(echo $ALLOWED | tr ' ' ',')."
+              [[ " $KNOWN " == *" $s "* ]] \
+                || fail "${env}Steps: '$s' is allowed by the platform, but this workflow doesn't know how to configure it yet."
+              if [ "$DEPLOY_METHOD" != "argocd" ] && [[ " $NEEDS_WORKSPACE " == *" $s "* ]]; then
+                fail "${env}Steps: '$s' needs the rendered manifests or the app's URL, which only Argo CD tenants have."
+              fi
+            done
+          done
 
       - name: Write app-values.yaml
         env:
@@ -186,18 +211,61 @@ jobs:
           [ "$S3" = "true" ] && y '.services.s3.enabled = true'
           [ "$SLACK" = "true" ] && y '.notifications.slack.enabled = true'
 
-          # Tier 2: one extra step each in dev and staging, from the allowlist
+          # Tier 2: extra steps in dev and staging, from the platform's allowlist.
+          # They run after the manifests render into ./out and before anything is
+          # committed. ./chart is sedemo-platform, ./src is this repo (Argo CD tenants).
+          export TAG_EXPR="${KARGO_OPEN}{{ imageFrom('${IMAGE_REPO}').Tag }}"
+          export FREIGHT_EXPR="${KARGO_OPEN}{{ ctx.targetFreight.name }}"
+          export TEAMS_HOOK_EXPR="${KARGO_OPEN}{{ secret(\"teams-webhook\")[\"teams-webhook\"] }}"
           add_step() { # $1 = dev|staging, $2 = step
-            [ "$2" = "none" ] && return 0
-            export STEP="$2" ALIAS="$1-$2"
-            if [ "$2" = "opa-test" ]; then
-              y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(CONTINUE), \"config\": {\"path\": \"./out\"}}]"
-            else
-              y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(CONTINUE), \"config\": {\"image\": strenv(IMAGE_REF)}}]"
-            fi
+            export ENV_NAME="$1" STEP="$2" ALIAS="$1-$2" STEP_CONTINUE="$CONTINUE"
+            case "$2" in
+              trivy-image|grype) CONFIG='{"image": strenv(IMAGE_REF)}' ;;
+              opa-test)          CONFIG='{"path": "./out"}' ;;
+              extract-images)    CONFIG='{"path": "out"}' ;;
+              kyverno-policy-apply) # prod's own policy check, run early
+                CONFIG='{"policy": "./chart/governed-teams/policies/prod-policies.yaml", "resource": "./out/manifests.yaml"}' ;;
+              gitleaks-scan)     # the same folder prod's secret scan checks
+                export SCAN_PATH="./src/$(yq '.checks.secretScan.path' .platform/governed-teams/kargo-chart/platform-controls.yaml)"
+                CONFIG='{"path": strenv(SCAN_PATH)}' ;;
+              http) # Runs before this promotion deploys, so it checks the version
+                    # already running (and fails on the first promotion): never blocks.
+                export URL="https://$1.$PREFIX.akpdemoapps.link/" STEP_CONTINUE=true
+                CONFIG='{"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}' ;;
+              hello-world)
+                export MSG="Hello from gov-$NAME, promoting to $1"
+                CONFIG='{"message": strenv(MSG)}' ;;
+              random-number)     CONFIG='{"range": 100}' ;;
+              teams-notify) # needs a teams-webhook Secret in the gov-<name> project
+                export TITLE="gov-$NAME: promoting to $1" MSG="$IMAGE_REPO:$TAG_EXPR" STEP_CONTINUE=true
+                CONFIG='{"webhookURL": strenv(TEAMS_HOOK_EXPR), "title": strenv(TITLE), "message": strenv(MSG), "stage": strenv(ENV_NAME), "freight": strenv(FREIGHT_EXPR)}' ;;
+              send-message) # posts to the kargo-notifications channel (slackEnabled)
+                export MSG="gov-$NAME: promoting $IMAGE_REPO:$TAG_EXPR to $1" STEP_CONTINUE=true
+                CONFIG='{"channel": {"kind": "MessageChannel", "name": "kargo-notifications"}, "message": strenv(MSG)}' ;;
+              wait-for-approval) # pauses the promotion until someone approves it in Kargo
+                STEP_CONTINUE=false
+                CONFIG='{}' ;;
+            esac
+            y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(STEP_CONTINUE), \"config\": $CONFIG}]"
           }
-          add_step dev "$DEV_STEP"
-          add_step staging "$STAGING_STEP"
+          NOTES=""
+          for env in dev staging; do
+            var="$(echo "$env" | tr a-z A-Z)_STEPS"
+            for s in $(echo "${!var}" | tr ',' ' '); do
+              add_step "$env" "$s"
+              case "$s" in
+                send-message) y '.notifications.slack.enabled = true'
+                  NOTES="$NOTES- send-message posts to the kargo-notifications Slack channel, so Slack notifications are turned on.\n" ;;
+                teams-notify)
+                  NOTES="$NOTES- teams-notify needs a Secret named \`teams-webhook\` (key \`teams-webhook\`) in the \`gov-$NAME\` Kargo project. Until it exists the step reports an error but doesn't block.\n" ;;
+                wait-for-approval)
+                  NOTES="$NOTES- wait-for-approval in $env: every promotion to $env waits for someone to approve it in Kargo.\n" ;;
+                http)
+                  NOTES="$NOTES- http in $env checks the version already running in $env (tenant steps run before the deploy), so it fails on the first promotion. It's report-only.\n" ;;
+              esac
+            done
+          done
+          [ -z "$NOTES" ] || printf "## Notes on the extra steps\n\n$NOTES\n" >> "$GITHUB_STEP_SUMMARY"
 
           # Tier 3: the team's own stages
           if [ "$QA" = "true" ]; then
@@ -224,12 +292,6 @@ jobs:
           } > "$FILE"
           echo "file=$FILE" >> "$GITHUB_ENV"
           cat "$FILE"
-
-      - name: Checkout platform charts
-        uses: actions/checkout@v4
-        with:
-          repository: akuity/sedemo-platform
-          path: .platform
 
       - name: Check against platform guardrails
         run: |
