@@ -1,0 +1,285 @@
+name: Create Governed Project
+# Onboards a governed tenant: writes governed/<name>/platform/app-values.yaml,
+# checks it against the platform's guardrails (sedemo-platform/governed-teams),
+# and pushes it to main. The governed-team-projects ApplicationSet then creates
+# the gov-<name> Kargo project and the gov-<name>-dev/-staging/-prod apps.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Tenant name (e.g. orders). Lowercase letters, numbers, dashes. Becomes Kargo project gov-<name>."
+        required: true
+        type: string
+      imageRepository:
+        description: "Image repository. Must be from an approved registry (ghcr.io/akuity/)."
+        required: true
+        type: string
+        default: ghcr.io/akuity/sedemo-monorepo-rollouts-app
+      selectionStrategy:
+        description: "How the Warehouse picks image tags."
+        type: choice
+        options: [NewestBuild, SemVer, Lexical, Digest]
+        default: NewestBuild
+      tagRegex:
+        description: "Only tags matching this regex become Freight."
+        type: string
+        default: '^\d*-[a-z]*$'
+      deployMethod:
+        description: "argocd: Kargo renders, Argo CD syncs. github-actions: Kargo runs your workflow at each stage."
+        type: choice
+        options: [argocd, github-actions]
+        default: argocd
+      ghaRepo:
+        description: "github-actions only: repo with the deploy workflow (must be under github.com/akuity/)."
+        type: string
+        default: https://github.com/akuity/sedemo-platform
+      ghaWorkflow:
+        description: "github-actions only: workflow file in .github/workflows (takes inputs environment and version)."
+        type: string
+        default: example-github-action.yaml
+      ghaRef:
+        description: "github-actions only: branch or tag to run the workflow from."
+        type: string
+        default: main
+      ingressPrefix:
+        description: "argocd only: URL prefix (dev.<prefix>.akpdemoapps.link). Empty = <name>-gov."
+        type: string
+        default: ""
+      purposeLabel:
+        description: "argocd only: labels.purpose, required by the prod policy check. Empty = <name>-api."
+        type: string
+        default: ""
+      rolloutsEnabled:
+        description: "argocd only: canary Rollout (on) or plain Deployment (off)."
+        type: boolean
+        default: true
+      replicaCount:
+        description: "Replicas per environment."
+        type: string
+        default: "2"
+      s3Enabled:
+        description: "Give the app an S3 bucket (gov-<name>-<env>-bucket)."
+        type: boolean
+        default: false
+      slackEnabled:
+        description: "Send promotion events to the kargo-notifications Slack channel."
+        type: boolean
+        default: false
+      devStep:
+        description: "Extra step in dev (tier 2)."
+        type: choice
+        options: [none, trivy-image, grype, opa-test]
+        default: none
+      stagingStep:
+        description: "Extra step in staging (tier 2)."
+        type: choice
+        options: [none, trivy-image, grype, opa-test]
+        default: none
+      stepsBlocking:
+        description: "Extra steps block the promotion when they fail (off = report only)."
+        type: boolean
+        default: false
+      qaStage:
+        description: "Add a qa environment between dev and staging (tier 3, auto-promoted)."
+        type: boolean
+        default: false
+      smokeTestStage:
+        description: "argocd only: add a smoke-test stage after staging that checks the staging URL (tier 3)."
+        type: boolean
+        default: false
+
+concurrency:
+  group: governed-tenants
+  cancel-in-progress: false
+
+jobs:
+  create-governed-tenant:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      NAME: ${{ inputs.name }}
+      IMAGE_REPO: ${{ inputs.imageRepository }}
+      SELECTION: ${{ inputs.selectionStrategy }}
+      TAG_REGEX: ${{ inputs.tagRegex }}
+      DEPLOY_METHOD: ${{ inputs.deployMethod }}
+      GHA_REPO: ${{ inputs.ghaRepo }}
+      GHA_WORKFLOW: ${{ inputs.ghaWorkflow }}
+      GHA_REF: ${{ inputs.ghaRef }}
+      INGRESS_PREFIX: ${{ inputs.ingressPrefix }}
+      PURPOSE: ${{ inputs.purposeLabel }}
+      ROLLOUTS: ${{ inputs.rolloutsEnabled }}
+      REPLICAS: ${{ inputs.replicaCount }}
+      S3: ${{ inputs.s3Enabled }}
+      SLACK: ${{ inputs.slackEnabled }}
+      DEV_STEP: ${{ inputs.devStep }}
+      STAGING_STEP: ${{ inputs.stagingStep }}
+      BLOCKING: ${{ inputs.stepsBlocking }}
+      QA: ${{ inputs.qaStage }}
+      SMOKE: ${{ inputs.smokeTestStage }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check inputs
+        id: vars
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          [[ "$NAME" =~ ^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$ ]] \
+            || fail "name '$NAME' must be lowercase letters, numbers and dashes (max 40), starting and ending with a letter or number."
+          [ "$NAME" != "template" ] || fail "'template' is reserved."
+          [ ! -e "governed/$NAME" ] || fail "governed/$NAME already exists. Run Delete Governed Project first, or edit the file directly."
+          [[ "$REPLICAS" =~ ^[0-9]+$ ]] && [ "$REPLICAS" -ge 1 ] && [ "$REPLICAS" -le 10 ] \
+            || fail "replicaCount must be a number from 1 to 10."
+
+          if [ "$DEPLOY_METHOD" = "argocd" ]; then
+            PREFIX="${INGRESS_PREFIX:-$NAME-gov}"
+            PURPOSE="${PURPOSE:-$NAME-api}"
+            [[ "$PREFIX" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] \
+              || fail "ingressPrefix '$PREFIX' must be a DNS label (lowercase letters, numbers, dashes)."
+            [[ "$PURPOSE" =~ ^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$ ]] \
+              || fail "purposeLabel '$PURPOSE' isn't a valid Kubernetes label value."
+            if [ -n "$(grep -rlE "custom_prefix:[[:space:]]*['\"]?$PREFIX['\"]?[[:space:]]*$" governed/ templated/ 2>/dev/null)" ]; then
+              fail "ingress prefix '$PREFIX' is already used by another team. Pick another ingressPrefix."
+            fi
+            echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+            echo "purpose=$PURPOSE" >> "$GITHUB_OUTPUT"
+          else
+            [ -n "$GHA_REPO" ] && [ -n "$GHA_WORKFLOW" ] && [ -n "$GHA_REF" ] \
+              || fail "deployMethod github-actions needs ghaRepo, ghaWorkflow and ghaRef."
+            [ "$SMOKE" != "true" ] \
+              || fail "smokeTestStage checks the staging URL, which only Argo CD tenants have. Turn it off for github-actions."
+          fi
+
+      - name: Write app-values.yaml
+        env:
+          PREFIX: ${{ steps.vars.outputs.prefix }}
+          PURPOSE: ${{ steps.vars.outputs.purpose }}
+          # Built in two parts so GitHub doesn't evaluate it: it's a Kargo expression.
+          KARGO_OPEN: "$"
+        run: |
+          set -euo pipefail
+          DIR="governed/$NAME/platform"
+          FILE="$DIR/app-values.yaml"
+          BODY="$(mktemp)"
+          mkdir -p "$DIR"
+          export IMAGE_REF="${IMAGE_REPO}:${KARGO_OPEN}{{ imageFrom('${IMAGE_REPO}').Tag }}"
+          export CONTINUE=$([ "$BLOCKING" = "true" ] && echo false || echo true)
+          y() { yq -i "$1" "$BODY"; }
+
+          # Tier 1: settings
+          y '.image.repository = strenv(IMAGE_REPO)
+            | .image.selectionStrategy = strenv(SELECTION)
+            | .image.tagRegex = strenv(TAG_REGEX) | .image.tagRegex style="single"'
+          if [ "$DEPLOY_METHOD" = "argocd" ]; then
+            y '.ingress.custom_prefix = strenv(PREFIX) | .rollouts.enabled = env(ROLLOUTS)'
+          else
+            y '.deploy.method = "github-actions"
+              | .deploy.githubActions.repo = strenv(GHA_REPO)
+              | .deploy.githubActions.workflow = strenv(GHA_WORKFLOW)
+              | .deploy.githubActions.ref = strenv(GHA_REF)'
+          fi
+          y '.replicaCount = env(REPLICAS) | .environments.staging = true'
+          [ "$DEPLOY_METHOD" = "argocd" ] && y '.labels.purpose = strenv(PURPOSE)'
+          [ "$S3" = "true" ] && y '.services.s3.enabled = true'
+          [ "$SLACK" = "true" ] && y '.notifications.slack.enabled = true'
+
+          # Tier 2: one extra step each in dev and staging, from the allowlist
+          add_step() { # $1 = dev|staging, $2 = step
+            [ "$2" = "none" ] && return 0
+            export STEP="$2" ALIAS="$1-$2"
+            if [ "$2" = "opa-test" ]; then
+              y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(CONTINUE), \"config\": {\"path\": \"./out\"}}]"
+            else
+              y ".pipeline.$1.extraSteps += [{\"uses\": strenv(STEP), \"as\": strenv(ALIAS), \"continueOnError\": env(CONTINUE), \"config\": {\"image\": strenv(IMAGE_REF)}}]"
+            fi
+          }
+          add_step dev "$DEV_STEP"
+          add_step staging "$STAGING_STEP"
+
+          # Tier 3: the team's own stages
+          if [ "$QA" = "true" ]; then
+            y '.pipeline.extraStages += [{"name": "qa", "after": "dev", "deploy": true, "autoPromote": true}]
+              | .pipeline.staging.after = ["qa"]'
+            if [ "$DEPLOY_METHOD" = "argocd" ]; then
+              export URL="https://qa.$PREFIX.akpdemoapps.link/"
+              y '(.pipeline.extraStages[] | select(.name == "qa")).steps = [{"uses": "http", "as": "qa-smoke-test", "retry": {"timeout": "5m"},
+                  "config": {"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}}]'
+            fi
+          fi
+          if [ "$SMOKE" = "true" ]; then
+            export URL="https://staging.$PREFIX.akpdemoapps.link/"
+            y '.pipeline.extraStages += [{"name": "smoke-test", "after": "staging", "steps": [{"uses": "http", "as": "check-staging",
+                "config": {"method": "GET", "url": strenv(URL), "successExpression": "response.status == 200"}}]}]'
+          fi
+
+          {
+            echo "# Tenant: $NAME. Created by the Create Governed Project workflow"
+            echo "# (run by $GITHUB_ACTOR, $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo "# Settings reference: sedemo-platform/governed-teams/kargo-chart/values.yaml"
+            echo
+            cat "$BODY"
+          } > "$FILE"
+          echo "file=$FILE" >> "$GITHUB_ENV"
+          cat "$FILE"
+
+      - name: Checkout platform charts
+        uses: actions/checkout@v4
+        with:
+          repository: akuity/sedemo-platform
+          path: .platform
+
+      - name: Check against platform guardrails
+        run: |
+          set -uo pipefail
+          OUT="$(mktemp)"
+          if .platform/governed-teams/tests/render.sh "$file" >"$OUT" 2>&1; then
+            {
+              echo "## Tenant \`$NAME\` passes the platform guardrails"
+              echo
+              echo "It will create:"
+              echo '```'; cat "$OUT"; echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            cat "$OUT"
+          else
+            {
+              echo "## Tenant \`$NAME\` rejected by the platform guardrails"
+              echo
+              echo "Nothing was committed."
+              echo '```'; cat "$OUT"; echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            cat "$OUT"
+            echo "::error::$(grep -m1 GUARDRAIL "$OUT" || tail -1 "$OUT")"
+            exit 1
+          fi
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config --global user.name "Akuity Bot"
+          git config --global user.email "akuitybot@akuity.io"
+          git add "governed/$NAME/"
+          git commit -m "Add governed tenant $NAME"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Next steps
+        env:
+          PREFIX: ${{ steps.vars.outputs.prefix }}
+        run: |
+          {
+            echo
+            echo "## Next steps"
+            echo
+            echo "- The ApplicationSet creates \`gov-$NAME-appsets\` within a few minutes, then the Kargo project \`gov-$NAME\`."
+            echo "- If nothing shows up in Kargo, check the \`gov-$NAME-kargo\` app in Argo CD."
+            if [ "$DEPLOY_METHOD" = "argocd" ]; then
+              echo "- URLs: https://dev.$PREFIX.akpdemoapps.link, https://staging.$PREFIX.akpdemoapps.link, https://prod.$PREFIX.akpdemoapps.link"
+            fi
+            echo "- First promotions: promote **image** Freight to each Stage before chart Freight. If an auto-promotion of chart Freight errored with \`imageFrom(...)\`, promote the image Freight to that Stage."
+            if [ "$QA" = "true" ] || [ "$SMOKE" = "true" ]; then
+              echo "- Wait for each new environment's certificate (\`curl -sI https://<stage>.$PREFIX.akpdemoapps.link/\` returns 200) before promoting to a stage with an http check."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

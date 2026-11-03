@@ -1,0 +1,57 @@
+name: Delete Governed Project
+# Removes governed/<name>/. The governed-team-projects ApplicationSet then prunes
+# gov-<name>-appsets, which deletes the tenant's Argo CD apps, namespaces and
+# Kargo project (gov-<name>), including its Freight and promotion history.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Tenant to delete (e.g. orders). Removes governed/<name>/ and everything the platform created for it."
+        required: true
+        type: string
+
+concurrency:
+  group: governed-tenants
+  cancel-in-progress: false
+
+jobs:
+  delete-governed-tenant:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      NAME: ${{ inputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check tenant exists
+        id: check
+        run: |
+          if ! [[ "$NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::name '$NAME' isn't a valid tenant name."
+            exit 1
+          fi
+          if [ -d "governed/$NAME" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::governed/$NAME does not exist. Nothing to delete."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Remove tenant, commit and push
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+          git config --global user.name "Akuity Bot"
+          git config --global user.email "akuitybot@akuity.io"
+          git rm -r --quiet "governed/$NAME"
+          git commit -m "Remove governed tenant $NAME"
+          git pull --rebase origin main
+          git push origin main
+          {
+            echo "## Removed governed tenant \`$NAME\`"
+            echo
+            echo "- Argo CD prunes \`gov-$NAME-appsets\` within a few minutes, which removes \`gov-$NAME-dev/-staging/-prod\`, their namespaces, and the Kargo project \`gov-$NAME\`."
+            echo "- If the Kargo project hangs in deletion, check the \`gov-$NAME-kargo\` app in Argo CD for stuck finalizers."
+          } >> "$GITHUB_STEP_SUMMARY"
