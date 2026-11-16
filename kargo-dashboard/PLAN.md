@@ -1,6 +1,6 @@
 # Kargo Dashboard — Implementation Plan
 
-Source of truth for intent: [README.md](README.md). This plan turns it into concrete, ordered work. Owner decisions are in section 11. Nothing is open. The one external dependency, the API token, is handled by the protocol in section 12. **Change request 1 (multiple warehouses per project) is planned in section 13 and supersedes 6.1 (including its "multiple warehouses" error), 6.7 and the frontend row layout where they disagree.** **Change requests 2 (live promotion status on cards) and 3 (multiple dashboards) are designed in sections 14–16, which revisit the data-fetching architecture; where they disagree with earlier sections, sections 14–16 win.** Where this plan and the README disagree, follow this plan and update the README in step 12.
+Source of truth for intent: [README.md](README.md). This plan turns it into concrete, ordered work. Owner decisions are in section 11. Nothing is open. The one external dependency, the API token, is handled by the protocol in section 12. **Change request 1 (multiple warehouses per project) is planned in section 13 and supersedes 6.1 (including its "multiple warehouses" error), 6.7 and the frontend row layout where they disagree.** **Change requests 2 (live promotion status on cards) and 3 (multiple dashboards) are designed in sections 14–16, which revisit the data-fetching architecture; where they disagree with earlier sections, sections 14–16 win.** **Change request 4 (event-driven updates from Kargo watches, replacing polling) is planned in section 17 and supersedes the refresh loop in 7, 14.5, 16.1 and P7 where they disagree.** Where this plan and the README disagree, follow this plan and update the README in step 12.
 
 ## 1. Goal
 
@@ -673,3 +673,239 @@ Built per 16.2. Deviations and additions:
 - **Deviation from 14.3/14.7 (lane rule):** a Promotion deploys one Freight per warehouse the stage requests (`freightCollection.items["Warehouse/<name>"]`), so a running promotion shows in **every lane whose warehouse is in the collection**, each lane with its own incoming version, instead of only the lane of the primary Freight's warehouse. Without a collection it falls back to the primary Freight's warehouse. The `current -> target` arrow is hidden when the incoming version equals the current one (e.g. an unchanged chart lane).
 - **Picker sizing:** the heading picker's width is set from its longest label, because Chrome sized the native select from normal-weight text and clipped the bold heading.
 - **P8 changed (owner, 2026-10-15):** the step summary now links to the promotion page. Kargo v1.12.1's UI defines `promotion: '/project/:name/promotion/:promotionId'` (`ui/src/config/paths.ts`), every caller passes the Promotion's `metadata.name`, and Kargo's own waiting-step label links there. The cell's promotion object carries `promotionUrl`.
+
+## 17. CR4: event-driven updates from Kargo watches (replaces polling)
+
+### 17.1 Requirement (owner, 2026-11-16)
+CloudWatch reported about 120 GB/month of data transfer for this app. The cause is the refresh loop: every 30s (5s during promotions) it re-downloads full stage, warehouse and freight lists for every project. PR #176 lowered the intervals and paused the loop when no browser is open. That was a stopgap. This change replaces polling with Kargo's watch streams:
+- the server receives only changes from Kargo;
+- the server pushes summaries to browsers as they change;
+- the UI updates within about 2s of a Kargo change;
+- data transfer while idle is near zero.
+
+The view model, the row and cell rendering and the decay logic must not change.
+
+### 17.2 Kargo facts (verified 2026-11-16 against the Kargo source at tags v1.12.0 and v1.12.5; **not yet verified live**, see step 0 in 17.7)
+Our instances run 1.12.ak0 (primary) and a 1.13 nightly (kargo-unstable). Both are ≥ 1.12.0.
+- **Watch mode is a query parameter on the existing REST list and get endpoints.** Adding `?watch=true` turns the response into Server-Sent Events (`Content-Type: text/event-stream`). Endpoints:
+  - `GET /v1beta1/projects/{p}/warehouses?watch=true`
+  - `GET /v1beta1/projects/{p}/stages?watch=true[&freightOrigins=<wh>...]`
+  - `GET /v1beta1/projects/{p}/freight?watch=true[&origins=<wh>...]`
+  - `GET /v1beta1/projects/{p}/promotions?watch=true[&stage=<s>]`, plus single-object watches on `/stages/{s}` and `/promotions/{name}`
+
+  Source: `pkg/server/list_stages.go`, `list_warehouses.go`, `query_freight.go`, `list_promotions.go`, `get_promotion.go`, `get_stage.go`.
+- **Event frame:** `data: {"type":"ADDED|MODIFIED|DELETED","object":{...}}\n\n`.
+  - `object` is the full Kubernetes object, the same shape as a list item.
+  - A `: keepalive\n\n` comment arrives every **30s**.
+  - Source: `pkg/server/watch_helpers.go` (`SendSSEWatchEvent`, `WriteSSEKeepalive`).
+- **Errors on the stream** arrive as `event: error\ndata: {"code":"<connect code>","message":"..."}`, and then the server closes the stream.
+  - An expired `resourceVersion` comes back as code **`out_of_range`** with "watch resource version expired". The client must re-list.
+  - An error while starting the watch may come back as a plain HTTP error instead. `SendSSEWatchStartError` decides which.
+- **Seeding, to avoid replaying every object:**
+  - The plain list responses carry a watchable resourceVersion:
+    - `StageList`, `WarehouseList` and `PromotionList` carry it in `metadata.resourceVersion`;
+    - the freight query response carries it in a top-level `resourceVersion` (it is empty for the `stage=`-scoped query, which we don't use).
+  - The server already normalizes `"0"` to empty. Pass it back as `&resourceVersion=<rv>`.
+  - Without a resourceVersion, the watch first replays every existing object as `ADDED`.
+- **Origin filtering:**
+  - For freight, Kargo filters by `origins` in-process.
+  - A `MODIFIED` for an object that no longer matches is sent as **`DELETED`**.
+  - A non-matching `ADDED` is dropped.
+  - Source: `FilteredWatchEventType`.
+- **Authorization:** the same bearer token is used, but the token's role must allow the **`watch`** verb on `stages`, `warehouses`, `freight` (and `promotions` if W1 changes). Today the README asks only for `get`/`list`. **Unverified.**
+- **Live promotion status needs no Promotion watch.** Section 16.5 observed that `Stage.status.currentPromotion.status` carries `phase`, `currentStep` and `stepExecutionMetadata`, so stage events already deliver step progress. Only the step list (`spec.steps`) needs the Promotion, and it never changes for a given Promotion.
+
+### 17.3 Decisions (recommended defaults; the owner may override any of them before step 1 starts)
+| # | Decision | Default |
+|---|---|---|
+| W1 | Which Kargo streams to open | **3 per unique project:** `warehouses`, `stages`, `freight`. No promotions watch: keep the cached one-time `GET /promotions/{name}` for `spec.steps` when a new `currentPromotion.name` appears. Promotion objects are heavy and change on every step. |
+| W2 | Freight watch scope | One freight watch per project. Add `origins=` for the union of wanted warehouses (`planProjects`). Omit it when any dashboard wants all warehouses (`all: true`). |
+| W3 | Server-to-browser transport | SSE at `GET /api/stream?dashboard=<id>`, pushing the full `/api/summary` payload whenever it changes. Keep `/api/summary` for first paint, the e2e tests and debugging. |
+| W4 | Polling settings | Remove the refresh loop. `refreshIntervalSeconds`, `promotion.activeRefreshIntervalSeconds` and `idlePauseSeconds` are still **accepted, ignored, and logged with one deprecation warning each**, so the deployed chart values don't break startup. Remove them from `config.example.json`, the chart values and the README. |
+| W5 | Idle behavior | Keep Kargo watches open all the time. Idle cost is one 13-byte keepalive per stream every 30s. Browser streams close themselves when tabs close. |
+| W6 | Detecting a stalled stream | If a Kargo stream receives no bytes (events or keepalives) for **90s**, abort it and reconnect from the last resourceVersion. |
+| W7 | Reconnect policy | Exponential backoff of 1s, 2s, 4s … capped at 60s, with ±20% jitter. Reset the backoff after a stream has stayed healthy for 60s. `out_of_range` or HTTP 410 → re-list, then watch. 401/403 → project error row, retrying at the 60s cap. |
+| W8 | Showing staleness | Keep the last good data while reconnecting. A project whose stream has been down for more than **120s** is listed in the payload's existing `refreshError` (e.g. `Lost connection to Kargo for team-ada since 14:02`), which the existing banner shows. Never blank out rows because of a disconnect. |
+| W9 | Batching bursts of events | Debounce rebuilds by **250ms**. After a rebuild, push only to the dashboards whose payload changed. Compare the serialized JSON, excluding `generatedAt`. |
+| W10 | Kargo older than 1.12, or a proxy that strips SSE | No polling fallback, so `collector.js` can be deleted. If a watch response is not `text/event-stream`, raise a clear error ("Kargo ≥ 1.12 with REST watch support is required") as a project error row. |
+| W11 | Proving the data drop | Count the bytes received from Kargo and log `kargo rx: <bytes> in last 10m (<n> streams, <r> reconnects)` every 10 minutes. This lets the owner match the drop against CloudWatch. |
+
+### 17.4 Data flow
+```
+Kargo API ──(per project: list → watch, ×3 streams)──► watcher.js ──events──► store.js
+                                                                                 │ 'change' (debounced 250ms)
+                                                                                 ▼
+                         buildDashboard(...) (unchanged summarize.js) ◄── store.snapshots()
+                                                                                 │ per-dashboard payload, changed only
+                                                                                 ▼
+Browser ◄──SSE /api/stream?dashboard=id── server.js ──► /api/summary (same payload, on demand)
+```
+The store must produce **exactly the snapshot shape the collector produces today**: `{ project, error, warehouses, stages, freightByWarehouse: Map<wh, {freight}|{error}>, promotions: Map<stage, {name, ref, status, steps}> }`. That keeps `summarize.js`, `promotion.js`, `decay.js`, `stage-order.js`, `stage-filter.js`, `version.js` and `links.js` **unchanged**. Any edit to those modules is a deviation and must be reported.
+
+### 17.5 Modules
+- **`src/sse.js` (new, pure).** `async function* parseSSE(byteStream)` yields `{ event, data, id }` for each event and `{ comment }` for each comment line. Comments still count as activity for W6.
+  - Handle `\n`, `\r\n` and `\r` line endings.
+  - Join multi-line `data:` fields with `\n`.
+  - Handle chunks that split anywhere, including inside a UTF-8 multibyte character (use `TextDecoder` with `stream: true`).
+  - Ignore unknown fields.
+- **`src/kargo-client.js` (extend; it stays the only module that does network I/O).**
+  - `listWarehouses` and `listStages` return `{ items, resourceVersion }` (from `metadata.resourceVersion`).
+  - `listFreight(project, { origins }, token)` makes **one call per project**: it sends repeated `origins=` parameters, flattens the groups as today, and returns `{ items, resourceVersion }`.
+  - New `watch(path, { token, query, resourceVersion, signal })` returns an async iterator of `{ type, object }`. It:
+    - checks for `text/event-stream` (W10);
+    - turns `event: error` into a `KargoWatchError` with `code`;
+    - raises `KargoApiError` with the status for HTTP errors;
+    - counts the bytes it receives (W11).
+  - `getPromotion` is unchanged.
+  - Tokens are never logged, as today.
+- **`src/watcher.js` (new).** `createResourceWatch({ list, watch, onReset(items), onEvent(type, object), onState(state), timers })` runs list → `onReset` → watch from that resourceVersion, and handles:
+  - the resourceVersion tracking: keep the latest `object.metadata.resourceVersion` seen;
+  - stall detection (W6);
+  - backoff (W7);
+  - re-listing on `out_of_range`/410.
+
+  `onState` reports `connecting | live | down(since, error)`. Inject the timers so tests run without real waiting. `stop()` aborts cleanly.
+- **`src/store.js` (new; replaces `collector.js`, which is deleted).**
+  - Move `planProjects` here unchanged, along with its tests.
+  - For each planned project, open three resource watches (W1, W2) and keep `Map<name, object>` per kind, plus per-stream state.
+  - `snapshots()` returns `Map<project, snapshot>` in the 17.4 shape:
+    - `freightByWarehouse` comes from grouping freight by `origin.name` for the wanted warehouses (all of them when `all`);
+    - a lane gets `{ error }` only if the freight stream has never loaded.
+  - A project-level `error` is set only when the warehouses or stages stream has never loaded, for example on a 403.
+  - It owns the promotion step cache from `collector.js`:
+    - when a stage event shows a new `currentPromotion.name`, it fetches the Promotion **once** and emits a change when that fetch returns;
+    - if a reference has no `phase`, it fetches that Promotion's status at most **once every 5s**;
+    - it drops cache entries once their promotion is no longer current.
+  - It is an `EventEmitter` that emits `'change'`.
+  - `status()` returns `{ ready, down: [{ project, since }], active }`. `ready` means every project has loaded, or failed, at least once.
+- **`src/server.js`.**
+  - `createApp({ config, store })` replaces `createApp({ config, refreshAll })`. Remove `startLoop`, `refresh`, `currentInterval`, `isIdle` and the 503 "resuming" path.
+  - On a debounced store `'change'`, rebuild every dashboard with `buildDashboard`, cache it, and push to the SSE clients of each dashboard whose payload changed (W9).
+  - The payload keeps `refreshError` (W8). It drops `refreshIntervalSeconds`, or sends `null`; pick one and update `app.js` to match.
+  - `GET /api/stream?dashboard=<id>`:
+    - 404 for an unknown id;
+    - SSE headers, including `Cache-Control: no-cache` and `X-Accel-Buffering: no`;
+    - immediately send `event: summary` with the cached payload, once ready;
+    - send `: ping` every 25s;
+    - remove the client on `close`.
+    - **Never compress this route** if compression middleware is added later.
+  - `/api/summary` returns 503 until `store.status().ready`, then the cached payload.
+  - `/healthz` returns 200 once ready.
+  - `main()` creates the client and the store, calls `store.start()`, and handles SIGTERM by stopping the store and closing SSE clients.
+- **`public/app.js`.**
+  - Replace `poll()` with an `EventSource('/api/stream?dashboard=<id>')`.
+  - On a `summary` event, call `render(data)`.
+  - On a dashboard switch, close the old EventSource and open a new one; the `pollToken` guard becomes an EventSource reference.
+  - EventSource reconnects by itself. If it has been in the error state for more than 10s, show the existing "Cannot reach the dashboard server" banner, and hide it again on the next `summary`.
+  - Keep showing the "Updated <time>" text from `generatedAt`.
+- **`src/config.js`.** Apply W4: parse and drop the three keys, with one warning each. Keep validating everything else.
+
+### 17.6 Tests (`node:test`; update existing tests only for moved or removed functions)
+- **`sse.test.js`:**
+  - one event split across every possible byte boundary;
+  - multi-line data, CRLF, comments, `event:` names, and a multibyte character split across chunks.
+- **`kargo-client.test.js`:**
+  - watch with the right content type yields events;
+  - watch with the wrong content type raises the W10 error;
+  - an `event: error` with `out_of_range` raises `KargoWatchError`;
+  - a 401 raises `KargoApiError(401)`;
+  - lists return `resourceVersion`;
+  - `listFreight` sends repeated `origins`.
+- **`watcher.test.js`, using fake `list`/`watch` and fake timers:**
+  - the seed resourceVersion is passed to the first watch;
+  - a reconnect resumes from the last object's resourceVersion;
+  - `out_of_range` → re-list, `onReset`, then watch from the new resourceVersion;
+  - a stall at 90s → reconnect;
+  - the backoff sequence and cap, and the reset after a healthy period;
+  - `stop()` ends everything with no pending timers.
+- **`store.test.js`:**
+  - **Golden equivalence.** *Before deleting `collector.js`*, capture `buildDashboard` output for the existing fixtures through the old collector. The store, seeded from the same fixtures (list, then no events), must produce identical dashboards.
+  - Then apply events and assert on the resulting dashboards:
+    - a freight `ADDED` changes `latest` and the decay counts;
+    - a stage `MODIFIED` with a new `freightHistory[0]` changes the cell version;
+    - a freight `DELETED` (including the origin-filter case) removes it;
+    - a new `currentPromotion` → exactly one `getPromotion` call, and the promotion state appears.
+  - The terminal phase clears it.
+  - A 403 on stages → error row in every dashboard that lists the project.
+  - A project shared by two dashboards opens one set of streams.
+- **`server.test.js`:**
+  - `/api/stream` sends the current payload on connect;
+  - a store change pushes to the subscribers of the changed dashboard only;
+  - an identical rebuild pushes nothing;
+  - a disconnected client is removed;
+  - an unknown id → 404;
+  - `refreshError` lists projects that have been down for more than 120s;
+  - delete the idle-pause test from #176 along with the feature.
+- **`config.test.js`:** the three deprecated keys produce warnings, not errors.
+- **e2e (`e2e/fake-kargo.mjs`, `e2e/run.mjs`):**
+  - the fake Kargo serves `?watch=true` as SSE, with the list resourceVersion seeded;
+  - `POST /__set` emits a stage `MODIFIED` event instead of changing what the next poll returns;
+  - add `POST /__freight` to emit a freight `ADDED`.
+  - Assert that the card changes **within 2s without a page reload**, and that the browser makes **no repeated `/api/summary` requests**.
+  - Keep the existing promotion and dashboard-switch checks green.
+
+### 17.7 Execution order (with tests at each step; commit at each checkpoint)
+Work on branch `feat/kargo-dashboard-watch` off `main`. The ground rules in 10a and the token protocol in 12 apply. **Do not push or open a PR** unless the owner says to.
+
+0. **Live preflight (gate; stop and ask the owner for a token per section 12).** Using `curl -N` against `https://kargo.akpdemoapps.link` with the token, confirm and record in 17.9:
+   - (a) `GET /v1beta1/projects/<p>/stages?watch=true` returns `text/event-stream`, and the keepalives arrive through the hosted ingress;
+   - (b) the stream stays open for **at least 10 minutes**. Record when and how the server or proxy closes it;
+   - (c) changing something (ask the owner to promote, or wait for a freight discovery) produces a `MODIFIED`/`ADDED` event;
+   - (d) the list responses carry a resourceVersion, and `&resourceVersion=<rv>` starts a watch without replaying;
+   - (e) the token is allowed `watch`.
+
+   **If (a) or (e) fails, stop and report.** For (e), ask the owner to add `watch` to the role. For (a), the hosted path doesn't support SSE, so this plan is blocked and needs redesign.
+1. **Golden capture:** add the 17.6 golden fixture output using the current collector. Commit.
+2. **`sse.js`** and tests.
+3. **`kargo-client.js`** extensions and tests.
+4. **`watcher.js`** and tests.
+5. **`store.js`**: golden equivalence first, then the event tests. Delete `collector.js` and move its remaining tests.
+6. **`server.js`**: `/api/stream`, debounce, change detection, staleness, shutdown, and the W11 logging.
+7. **`app.js`**: EventSource, the switch behavior and the banner. Update the e2e fake and run `npm run test:e2e`.
+8. **Config, docs and chart:**
+   - W4 deprecations;
+   - remove the polling keys from `config.example.json` and `deploy/chart/values.yaml`;
+   - README: replace the polling text, list the endpoints and calls per project as list + watch, and change the token role to `get`/`list`/`watch`.
+   - Add a status note to this section.
+9. **Live verification** against the demo instance (17.8 items 3–5).
+
+### 17.8 Acceptance criteria (all must hold)
+1. `npm test` and `npm run test:e2e` pass. `summarize.js`, `promotion.js`, `decay.js`, `stage-order.js`, `stage-filter.js`, `version.js` and `links.js` have **no diff** (or each change is listed as a deviation).
+2. The golden-equivalence test passes: for the fixtures, the store's dashboards match the old collector's exactly.
+3. Live: with the dashboard open, a new freight discovery or a stage promotion shows up within **~2s**. The browser's network panel shows one long-lived `/api/stream` and no repeated `/api/summary` requests.
+4. Live: after **10 minutes idle** (no tabs open), the W11 log line shows **< 200 KB** received from Kargo, against about 28 MB per 10 minutes implied by 120 GB/month before #176. Report both numbers.
+5. Live, testing resilience:
+   - restart the dashboard pod: data is back with no replay storm. The log shows lists with seeded watches, not unseeded ones;
+   - temporarily block egress, or use a bad token for one project: other projects keep updating, and the affected row shows its banner or error row per W7 and W8;
+   - restore egress or the token: everything recovers without a restart.
+6. No token, hostname or `Bearer` value appears in the fixtures, logs or commits (the section 12 grep).
+7. `docker build` succeeds, and `/healthz` returns 200 once the streams have loaded.
+
+**Required report:**
+- the test summaries;
+- the 17.9 preflight results;
+- the W11 numbers from before and after;
+- screenshots of a live update arriving (before and after, no reload);
+- the observed server or proxy stream lifetime;
+- every deviation from this section, with its reason;
+- anything left undone.
+
+### 17.9 Implementation notes (2026-11-16)
+Built per 17.7 on branch `feat/kargo-dashboard-watch`; `npm test` (156) and `npm run test:e2e` (29 browser checks) pass, and `docker build` plus `/healthz` 200 from the container with a mounted config were checked.
+
+**Step 0 preflight (live, against the hosted Kargo, demo-rollouts):**
+- (a) `?watch=true` returns `200 text/event-stream` with `Cache-Control: no-cache` and `X-Accel-Buffering: no`. Passes.
+- (b) A seeded stream stayed open for the full 661s of the test (it ended only because `curl -m 660` stopped it), with keepalives every 30s. No ingress or server timeout was seen within 11 minutes.
+- (c) Real `MODIFIED` events arrived during the run (warehouse status updates).
+- (d) All three list responses carry a resourceVersion (`metadata.resourceVersion` for stages and warehouses, top-level `resourceVersion` for freight). A seeded watch replays nothing (13 bytes, one keepalive, in 35s); an unseeded stage watch replays everything (167 KB for one project).
+- (e) The token is allowed `watch`.
+
+**Deviations and findings:**
+- **Seeded watches send no headers until the first keepalive (up to 30s) through the ingress.** The first version used the 10s list timeout for connecting, so against the live Kargo every watch timed out and retried forever (the banner appeared 2 minutes after start). Neither the unit tests nor the e2e fake could show it, because both send headers at once. Fixed: watches wait up to `watchConnectTimeoutMs` (60s), with a test that fails without the fix. The e2e fake still replies at once; nothing models the ingress delay except that unit test.
+- **Freight failure scope (W1/W2):** freight is one list per project, so if it fails, every lane of the project shows the error (polling fetched each warehouse separately and isolated lanes). The project row and stages still render. `test/summarize.test.js` was updated for this and runs through the store via a small adapter; its other tests are unchanged.
+- **Idle traffic is above the 17.8 item 4 target of 200 KB, but for a different reason than expected.** Measured live (all 21 streams seeded, 0 reconnects): **383,471 bytes in 10 minutes** (`kargo rx` log line), against about 28 MB per 10 minutes before #176 (120 GB/month). Per-stream measurement over 150s showed 17 of 21 streams quiet and 4 warehouse streams carrying everything: Kargo updates Warehouse status about every 75s per warehouse, and each `MODIFIED` event is the whole object (~10 KB). None of it changes a dashboard, so the server's change detection pushes nothing to browsers. If this matters, the fix is to stop watching warehouses (their spec rarely changes) and re-list them every ~15 minutes instead, which would remove about 90% of what is left. Not done, because W1 chose a warehouse watch.
+- **A project the token cannot read** shows its error row immediately, and after `staleMs` (2 minutes) the banner also says "Lost connection to Kargo for <project>", because a 403 is a stream that is down. Accurate enough, but the wording suits dropped connections better than denied access.
+- **Not verified live:** a promotion or new Freight appearing on the real Kargo (those need the owner to trigger them; the e2e covers them, with updates arriving in about 270 ms), blocking egress, and screenshots. Verified live: pod-style restart (all streams re-seeded with no replay), a bad token for one project (that row errors, the other five render, no token in the log), and `/healthz` in the container.
+- `src/promotion.js` and `src/summarize.js` have no diff, but two comments in them still say "collector" (`promotion.js:19`, `summarize.js:118`). Left as is to keep to the no-diff rule in 17.8 item 1.
+- Added `watchConnectTimeoutMs` (client option) and `staleMs`, `debounceMs`, `pingMs` and `recheckMs` (server options); none are in the config file.
+- The traffic log counts bytes received on watch streams only (the initial lists are not counted).
