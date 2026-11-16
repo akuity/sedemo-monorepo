@@ -168,7 +168,7 @@ function render(data) {
   renderLegend(data.thresholds);
   rowsEl.replaceChildren(...data.rows.map(renderRow));
   bannerEl.hidden = !data.refreshError;
-  bannerEl.textContent = data.refreshError ? `Latest refresh failed, showing previous data: ${data.refreshError}` : '';
+  bannerEl.textContent = data.refreshError ? `Showing the last known data. ${data.refreshError}` : '';
   updatedEl.textContent = `Updated ${new Date(data.generatedAt).toLocaleTimeString()}`;
 }
 
@@ -176,8 +176,8 @@ function render(data) {
 const titleEl = document.getElementById('title');
 let dashboards = [];
 let currentId = null;
-let pollTimer = null;
-let pollToken = 0; // bumped on every dashboard switch so a late response can't overwrite the new view
+let source = null;     // the EventSource for the current dashboard
+let lostTimer = null;  // shows the 'cannot reach' banner if the stream stays broken
 
 const defaultDashboard = () => dashboards.find((d) => d.default) || dashboards[0];
 const pathFor = (d) => (d.default ? '/' : `/d/${encodeURIComponent(d.id)}`);
@@ -228,31 +228,30 @@ function showDashboard(id) {
   rowsEl.replaceChildren(el('p', 'muted', 'Loading…'));
   bannerEl.hidden = true;
   updatedEl.textContent = '';
-  clearTimeout(pollTimer);
-  pollToken += 1;
-  poll(pollToken);
+  connect();
 }
 
-async function poll(token) {
-  let delay = 3;
-  try {
-    const res = await fetch(`/api/summary?dashboard=${encodeURIComponent(currentId)}`);
-    if (token !== pollToken) return; // superseded by a dashboard switch
-    if (res.ok) {
-      const data = await res.json();
-      if (token !== pollToken) return;
-      render(data);
-      delay = data.refreshIntervalSeconds;
-    } else if (res.status !== 503) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-  } catch (err) {
-    if (token !== pollToken) return;
-    bannerEl.hidden = false;
-    bannerEl.textContent = `Cannot reach the dashboard server: ${err.message}`;
-    delay = 10;
-  }
-  pollTimer = setTimeout(() => poll(token), delay * 1000);
+// One server-sent event stream per open dashboard: the server pushes a full summary whenever Kargo
+// changes. EventSource reconnects by itself; the banner only appears if that keeps failing.
+function connect() {
+  source?.close();
+  clearTimeout(lostTimer);
+  lostTimer = null;
+  const es = new EventSource(`/api/stream?dashboard=${encodeURIComponent(currentId)}`);
+  source = es; // a late event from a closed stream is ignored by the identity checks below
+  es.addEventListener('summary', (ev) => {
+    if (source !== es) return;
+    clearTimeout(lostTimer);
+    lostTimer = null;
+    render(JSON.parse(ev.data)); // also clears the banner unless the payload carries a refreshError
+  });
+  es.onerror = () => {
+    if (source !== es || lostTimer) return;
+    lostTimer = setTimeout(() => {
+      bannerEl.hidden = false;
+      bannerEl.textContent = 'Cannot reach the dashboard server: connection lost, retrying';
+    }, 10000);
+  };
 }
 
 async function start() {

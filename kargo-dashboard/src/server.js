@@ -107,7 +107,7 @@ export function createApp({
     if (latest[id]) res.write(frame(latest[id]));
     const set = clients.get(id);
     set.add(res);
-    req.on('close', () => set.delete(res));
+    res.on('close', () => set.delete(res));
   });
 
   app.get('/healthz', (_req, res) => res.status(ready ? 200 : 503).send(ready ? 'ok' : 'starting'));
