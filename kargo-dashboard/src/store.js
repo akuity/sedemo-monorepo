@@ -44,6 +44,7 @@ export function createStore({
   const statusCache = new Map();
   const inflight = new Set();
   let stopped = false;
+  let reconnects = 0; // times any stream dropped
 
   const changed = () => { if (!stopped) emitter.emit('change'); };
 
@@ -130,6 +131,7 @@ export function createStore({
           changed();
         },
         onState: ({ state, since, error }) => {
+          if (state === 'down' && stream.state !== 'down') reconnects += 1;
           stream.state = state; stream.since = since; stream.error = error;
           if (state === 'down') stream.settled = true;
           changed();
@@ -194,6 +196,7 @@ export function createStore({
         down,
         active: all.some((st) => [...st.data.stages.values()].some((s) => isActivePromotion(s.status?.currentPromotion))),
         streams: all.length * KINDS.length,
+        reconnects,
       };
     },
   };

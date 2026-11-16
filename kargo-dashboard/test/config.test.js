@@ -10,7 +10,7 @@ test('applies defaults and preserves project order', () => {
   assert.deepEqual(Object.keys(c.dashboards.default.projects), ['a', 'b']);
   assert.equal(c.kargo.url, 'https://k.example');
   assert.equal(c.kargo.tokenEnv, 'KARGO_TOKEN');
-  assert.equal(c.refreshIntervalSeconds, 30);
+  assert.equal('refreshIntervalSeconds' in c, false, 'polling settings are gone from the parsed config');
   assert.deepEqual(c.decay.thresholds, DEFAULT_THRESHOLDS);
   assert.equal(c.dashboards.default.projects.a.displayName, 'a');
   assert.deepEqual(c.dashboards.default.projects.a.includeStages, []);
@@ -166,11 +166,11 @@ test('projects and dashboards together, or neither, are rejected', () => {
 });
 
 // ---- Section 14.4: promotion settings ----
-test('promotion defaults: blue, purple, the wait-for/get-user-input pattern, animated, 5s', () => {
+test('promotion defaults: blue, purple, the wait-for/get-user-input pattern, animated', () => {
   const p = validateConfig(base(), env).promotion;
   assert.deepEqual(p, {
     color: '#1e6fd9', waitingColor: '#7b1fa2', waitingStepPattern: 'wait-for|^get-user-input$',
-    animate: true, activeRefreshIntervalSeconds: 5,
+    animate: true,
   });
   const re = new RegExp(p.waitingStepPattern);
   for (const yes of ['wait-for-approval', 'git-wait-for-pr', 'snow-wait-for-condition', 'gha-wait-for-workflow', 'gh-wait-for-issue-state', 'get-user-input']) {
@@ -180,13 +180,25 @@ test('promotion defaults: blue, purple, the wait-for/get-user-input pattern, ani
 });
 
 test('promotion settings can be overridden and are validated', () => {
-  const p = (promotion) => validateConfig({ ...base(), refreshIntervalSeconds: 30, promotion }, env).promotion;
-  assert.equal(p({ color: '#ff0000', animate: false, activeRefreshIntervalSeconds: 2 }).color, '#ff0000');
+  const p = (promotion) => validateConfig({ ...base(), promotion }, env).promotion;
+  assert.equal(p({ color: '#ff0000', animate: false }).color, '#ff0000');
   assert.equal(p({ waitingStepPattern: '^wait-for' }).waitingStepPattern, '^wait-for');
   assert.throws(() => p({ color: 'blue' }), /promotion.color must be a #rrggbb color/);
   assert.throws(() => p({ waitingColor: '#fff' }), /promotion.waitingColor/);
   assert.throws(() => p({ waitingStepPattern: '(' }), /not a valid regex/);
   assert.throws(() => p({ animate: 'yes' }), /animate must be true or false/);
-  for (const bad of [0, 1.5, 31, '5']) assert.throws(() => p({ activeRefreshIntervalSeconds: bad }), /between 1 and refreshIntervalSeconds/);
   assert.throws(() => p([]), /promotion must be an object/);
+});
+
+// ---- PLAN 17 (W4): polling settings are accepted, ignored, and warned about ----
+test('the three polling settings warn once each and do nothing, even with out-of-range values', () => {
+  const c = validateConfig({ ...base(), refreshIntervalSeconds: 60, idlePauseSeconds: 0, promotion: { activeRefreshIntervalSeconds: 999, animate: false } }, env);
+  const deprecated = c.warnings.filter((w) => /deprecated and ignored/.test(w));
+  assert.equal(deprecated.length, 3);
+  for (const key of ['refreshIntervalSeconds', 'idlePauseSeconds', 'promotion.activeRefreshIntervalSeconds']) {
+    assert.equal(deprecated.filter((w) => w.startsWith(`${key} `)).length, 1, key);
+  }
+  assert.equal(c.promotion.animate, false);
+  assert.ok(!('activeRefreshIntervalSeconds' in c.promotion));
+  assert.equal(validateConfig(base(), env).warnings.filter((w) => /deprecated and ignored/.test(w)).length, 0, 'no warning when unset');
 });
