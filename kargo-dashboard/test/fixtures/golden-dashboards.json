@@ -1,0 +1,912 @@
+{
+ "rawConfig": {
+  "kargo": {
+   "url": "https://k.example",
+   "tokenEnv": "T"
+  },
+  "defaultDashboard": "demos",
+  "dashboards": {
+   "demos": {
+    "name": "Demos",
+    "projects": {
+     "demo-rollouts": {
+      "warehouse": "demo-rollouts"
+     },
+     "sedemo-app-demo": {}
+    }
+   },
+   "teams": {
+    "name": "Teams",
+    "projects": {
+     "team-ada": {},
+     "sedemo-app-demo": {
+      "warehouses": [
+       "sedemo-app-demo"
+      ]
+     }
+    }
+   }
+  }
+ },
+ "promotion": {
+  "ref": {
+   "name": "dev.p1",
+   "freight": {
+    "name": "f",
+    "origin": {
+     "name": "demo-rollouts"
+    }
+   },
+   "status": {
+    "phase": "Running",
+    "currentStep": 1
+   }
+  },
+  "steps": [
+   {
+    "uses": "git-clone",
+    "as": "a"
+   },
+   {
+    "uses": "helm-template",
+    "as": "b"
+   },
+   {
+    "uses": "wait-for-approval",
+    "as": "c"
+   }
+  ]
+ },
+ "idle": {
+  "demos": {
+   "dashboard": {
+    "id": "demos",
+    "name": "Demos"
+   },
+   "rows": [
+    {
+     "project": "demo-rollouts",
+     "displayName": "demo-rollouts",
+     "projectUrl": "https://k.example/project/demo-rollouts",
+     "lanes": [
+      {
+       "warehouse": "demo-rollouts",
+       "latest": {
+        "version": "50-blue",
+        "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+        "alias": "limping-jaguar",
+        "fallback": false,
+        "createdAt": "2026-08-27T20:42:30Z",
+        "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/dev",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-10-01T15:43:44Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/staging",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-30T13:11:36Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:25Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-amer-east",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-amer-east",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:52Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-amer-west",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-amer-west",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:50Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-emea",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-emea",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:44Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": false,
+     "error": null
+    },
+    {
+     "project": "sedemo-app-demo",
+     "displayName": "sedemo-app-demo",
+     "projectUrl": "https://k.example/project/sedemo-app-demo",
+     "lanes": [
+      {
+       "warehouse": "sedemo-app-demo",
+       "latest": {
+        "version": "15",
+        "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+        "alias": "sullen-sheep",
+        "fallback": false,
+        "createdAt": "2026-10-05T18:37:15Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:38:23Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:45:07Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:53:58Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      },
+      {
+       "warehouse": "sedemo-app-demo-chart",
+       "latest": {
+        "version": "8e87771",
+        "freightName": "efaffd630ee80566f420f5b750b1271ebe5de631",
+        "alias": "virtuous-panda",
+        "fallback": false,
+        "createdAt": "2026-10-06T18:30:13Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/efaffd630ee80566f420f5b750b1271ebe5de631"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/efaffd630ee80566f420f5b750b1271ebe5de631",
+         "version": "8e87771",
+         "alias": "virtuous-panda",
+         "freightName": "efaffd630ee80566f420f5b750b1271ebe5de631",
+         "since": "2026-10-06T18:31:25Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/f450b5d719d6e40f8704dd3f57c774ae88a0d35a",
+         "version": "4aca0f4",
+         "alias": "vested-macaw",
+         "freightName": "f450b5d719d6e40f8704dd3f57c774ae88a0d35a",
+         "since": "2026-09-03T18:49:26Z",
+         "decay": {
+          "behind": 5,
+          "color": "#c62828",
+          "label": "Worse"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "version": null,
+         "decay": {
+          "behind": null,
+          "color": "#c62828",
+          "label": "unknown"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    }
+   ]
+  },
+  "teams": {
+   "dashboard": {
+    "id": "teams",
+    "name": "Teams"
+   },
+   "rows": [
+    {
+     "project": "team-ada",
+     "displayName": "team-ada",
+     "projectUrl": "https://k.example/project/team-ada",
+     "lanes": [
+      {
+       "warehouse": "akkoma-main",
+       "latest": {
+        "version": "0.0.0-main.20261007191005.g0b131ede",
+        "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+        "alias": "joyous-pug",
+        "fallback": false,
+        "createdAt": "2026-10-07T19:14:25Z",
+        "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/team-ada/stage/dev",
+         "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "version": "0.0.0-main.20261007191005.g0b131ede",
+         "alias": "joyous-pug",
+         "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "since": "2026-10-07T19:15:40Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "release",
+         "stageUrl": "https://k.example/project/team-ada/stage/release",
+         "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "version": "0.0.0-main.20261007191005.g0b131ede",
+         "alias": "joyous-pug",
+         "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "since": "2026-10-07T19:57:04Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      },
+      {
+       "warehouse": "akkoma-release",
+       "latest": {
+        "version": "0.8.7",
+        "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+        "alias": "v0.8.7",
+        "fallback": false,
+        "createdAt": "2026-10-13T19:44:17Z",
+        "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3"
+       },
+       "stages": [
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/team-ada/stage/staging",
+         "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "version": "0.8.7",
+         "alias": "v0.8.7",
+         "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "since": "2026-10-13T19:54:33Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/team-ada/stage/prod",
+         "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "version": "0.8.7",
+         "alias": "v0.8.7",
+         "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "since": "2026-10-14T14:15:02Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    },
+    {
+     "project": "sedemo-app-demo",
+     "displayName": "sedemo-app-demo",
+     "projectUrl": "https://k.example/project/sedemo-app-demo",
+     "lanes": [
+      {
+       "warehouse": "sedemo-app-demo",
+       "latest": {
+        "version": "15",
+        "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+        "alias": "sullen-sheep",
+        "fallback": false,
+        "createdAt": "2026-10-05T18:37:15Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:38:23Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:45:07Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:53:58Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    }
+   ]
+  }
+ },
+ "promoting": {
+  "demos": {
+   "dashboard": {
+    "id": "demos",
+    "name": "Demos"
+   },
+   "rows": [
+    {
+     "project": "demo-rollouts",
+     "displayName": "demo-rollouts",
+     "projectUrl": "https://k.example/project/demo-rollouts",
+     "lanes": [
+      {
+       "warehouse": "demo-rollouts",
+       "latest": {
+        "version": "50-blue",
+        "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+        "alias": "limping-jaguar",
+        "fallback": false,
+        "createdAt": "2026-08-27T20:42:30Z",
+        "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/dev",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-10-01T15:43:44Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": {
+          "name": "dev.p1",
+          "phase": "Running",
+          "step": 2,
+          "steps": 3,
+          "uses": "helm-template",
+          "alias": "b",
+          "waiting": false,
+          "message": null,
+          "targetVersion": "f",
+          "targetFreightName": "f",
+          "targetFreightUrl": "https://k.example/project/demo-rollouts/freight/f",
+          "startedAt": null,
+          "promotionUrl": "https://k.example/project/demo-rollouts/promotion/dev.p1"
+         }
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/staging",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-30T13:11:36Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:25Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-amer-east",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-amer-east",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:52Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-amer-west",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-amer-west",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:50Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod-emea",
+         "stageUrl": "https://k.example/project/demo-rollouts/stage/prod-emea",
+         "freightUrl": "https://k.example/project/demo-rollouts/freight/6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "version": "50-blue",
+         "alias": "limping-jaguar",
+         "freightName": "6c85ac80a54b6a207c6f9c0ac930630dc5403153",
+         "since": "2026-09-18T14:34:44Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": false,
+     "error": null
+    },
+    {
+     "project": "sedemo-app-demo",
+     "displayName": "sedemo-app-demo",
+     "projectUrl": "https://k.example/project/sedemo-app-demo",
+     "lanes": [
+      {
+       "warehouse": "sedemo-app-demo",
+       "latest": {
+        "version": "15",
+        "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+        "alias": "sullen-sheep",
+        "fallback": false,
+        "createdAt": "2026-10-05T18:37:15Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:38:23Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:45:07Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:53:58Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      },
+      {
+       "warehouse": "sedemo-app-demo-chart",
+       "latest": {
+        "version": "8e87771",
+        "freightName": "efaffd630ee80566f420f5b750b1271ebe5de631",
+        "alias": "virtuous-panda",
+        "fallback": false,
+        "createdAt": "2026-10-06T18:30:13Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/efaffd630ee80566f420f5b750b1271ebe5de631"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/efaffd630ee80566f420f5b750b1271ebe5de631",
+         "version": "8e87771",
+         "alias": "virtuous-panda",
+         "freightName": "efaffd630ee80566f420f5b750b1271ebe5de631",
+         "since": "2026-10-06T18:31:25Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/f450b5d719d6e40f8704dd3f57c774ae88a0d35a",
+         "version": "4aca0f4",
+         "alias": "vested-macaw",
+         "freightName": "f450b5d719d6e40f8704dd3f57c774ae88a0d35a",
+         "since": "2026-09-03T18:49:26Z",
+         "decay": {
+          "behind": 5,
+          "color": "#c62828",
+          "label": "Worse"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "version": null,
+         "decay": {
+          "behind": null,
+          "color": "#c62828",
+          "label": "unknown"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    }
+   ]
+  },
+  "teams": {
+   "dashboard": {
+    "id": "teams",
+    "name": "Teams"
+   },
+   "rows": [
+    {
+     "project": "team-ada",
+     "displayName": "team-ada",
+     "projectUrl": "https://k.example/project/team-ada",
+     "lanes": [
+      {
+       "warehouse": "akkoma-main",
+       "latest": {
+        "version": "0.0.0-main.20261007191005.g0b131ede",
+        "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+        "alias": "joyous-pug",
+        "fallback": false,
+        "createdAt": "2026-10-07T19:14:25Z",
+        "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/team-ada/stage/dev",
+         "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "version": "0.0.0-main.20261007191005.g0b131ede",
+         "alias": "joyous-pug",
+         "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "since": "2026-10-07T19:15:40Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "release",
+         "stageUrl": "https://k.example/project/team-ada/stage/release",
+         "freightUrl": "https://k.example/project/team-ada/freight/7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "version": "0.0.0-main.20261007191005.g0b131ede",
+         "alias": "joyous-pug",
+         "freightName": "7652f324c17a31a8efa0e080ff64aafbf64c0c38",
+         "since": "2026-10-07T19:57:04Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      },
+      {
+       "warehouse": "akkoma-release",
+       "latest": {
+        "version": "0.8.7",
+        "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+        "alias": "v0.8.7",
+        "fallback": false,
+        "createdAt": "2026-10-13T19:44:17Z",
+        "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3"
+       },
+       "stages": [
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/team-ada/stage/staging",
+         "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "version": "0.8.7",
+         "alias": "v0.8.7",
+         "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "since": "2026-10-13T19:54:33Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/team-ada/stage/prod",
+         "freightUrl": "https://k.example/project/team-ada/freight/5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "version": "0.8.7",
+         "alias": "v0.8.7",
+         "freightName": "5709334625a85aec17c9b5cb1ec05410ab2028a3",
+         "since": "2026-10-14T14:15:02Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    },
+    {
+     "project": "sedemo-app-demo",
+     "displayName": "sedemo-app-demo",
+     "projectUrl": "https://k.example/project/sedemo-app-demo",
+     "lanes": [
+      {
+       "warehouse": "sedemo-app-demo",
+       "latest": {
+        "version": "15",
+        "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+        "alias": "sullen-sheep",
+        "fallback": false,
+        "createdAt": "2026-10-05T18:37:15Z",
+        "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749"
+       },
+       "stages": [
+        {
+         "name": "dev",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/dev",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:38:23Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "staging",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/staging",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:45:07Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        },
+        {
+         "name": "prod",
+         "stageUrl": "https://k.example/project/sedemo-app-demo/stage/prod",
+         "freightUrl": "https://k.example/project/sedemo-app-demo/freight/8e60e95cfee74522800046d790c68b58f6769749",
+         "version": "15",
+         "alias": "sullen-sheep",
+         "freightName": "8e60e95cfee74522800046d790c68b58f6769749",
+         "since": "2026-10-05T18:53:58Z",
+         "decay": {
+          "behind": 0,
+          "color": "#2e7d32",
+          "label": "Good"
+         },
+         "promotion": null
+        }
+       ],
+       "error": null
+      }
+     ],
+     "showLaneCaptions": true,
+     "error": null
+    }
+   ]
+  }
+ }
+}
