@@ -101,6 +101,7 @@ See [`config.example.json`](config.example.json).
 - `kargo.url`: the Kargo instance (or `KARGO_URL`)
 - `kargo.tokenEnv`: name of the env var holding the API token (default `KARGO_TOKEN`)
 - `refreshIntervalSeconds`: how often the server re-reads Kargo, and the page re-polls (default 30)
+- `idlePauseSeconds` (`120`): the server stops calling Kargo when no browser has requested a summary for this long, and resumes on the next visit (the page shows "Loading…" for a few seconds). `0` disables pausing
 - `decay.thresholds`: ascending list of `{ max, label, color }`, where `max` is the highest "versions behind" count the entry covers. Only the last entry may (and must) have `max: null`
 - `defaultDashboard`: the dashboard `/` shows. Required when there is more than one dashboard
 - `dashboards`: a map of dashboard id to `{ name, projects }`. The id appears in URLs (`a-z`, `0-9` and dashes) and the key order is the picker order. `name` is required
