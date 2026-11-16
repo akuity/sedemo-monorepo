@@ -110,3 +110,19 @@ test('the refresh interval drops to the active value while a promotion runs, the
     assert.equal((await json(await fetch(`${base}/api/summary`))).refreshIntervalSeconds, 30);
   });
 });
+
+test('after idlePauseSeconds without a summary request, the next request gets 503 (resuming) and marks the app active again', async () => {
+  const cfg = { ...config, idlePauseSeconds: 0.05 };
+  const { app, refresh, isIdle } = createApp({ config: cfg, refreshAll: async () => ({ bodies: bodies(), active: false }) });
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    await refresh();
+    assert.equal((await fetch(`${base}/api/summary`)).status, 200);
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(isIdle(), true);
+    assert.equal((await fetch(`${base}/api/summary`)).status, 503);
+    assert.equal(isIdle(), false);
+    assert.equal((await fetch(`${base}/api/summary`)).status, 200);
+  } finally { server.close(); }
+});

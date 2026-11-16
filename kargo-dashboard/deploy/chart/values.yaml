@@ -18,7 +18,10 @@ config:
   kargo:
     url: https://kargo.akpdemoapps.link
     tokenEnv: KARGO_TOKEN
-  refreshIntervalSeconds: 30
+  refreshIntervalSeconds: 60
+  idlePauseSeconds: 120
+  promotion:
+    activeRefreshIntervalSeconds: 15
   defaultDashboard: shared
   dashboards:
     shared:

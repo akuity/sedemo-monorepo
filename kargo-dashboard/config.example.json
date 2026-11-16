@@ -3,7 +3,8 @@
     "url": "https://kargo.akpdemoapps.link",
     "tokenEnv": "KARGO_TOKEN"
   },
-  "refreshIntervalSeconds": 30,
+  "refreshIntervalSeconds": 60,
+  "idlePauseSeconds": 120,
   "defaultDashboard": "demos",
   "decay": {
     "thresholds": [
@@ -34,7 +35,7 @@
     "waitingColor": "#7b1fa2",
     "waitingStepPattern": "wait-for|^get-user-input$",
     "animate": true,
-    "activeRefreshIntervalSeconds": 5
+    "activeRefreshIntervalSeconds": 15
   },
   "dashboards": {
     "demos": {

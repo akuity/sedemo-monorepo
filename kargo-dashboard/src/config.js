@@ -214,7 +214,9 @@ export function validateConfig(raw, env = process.env) {
   const promotion = parsePromotion(raw.promotion, refreshIntervalSeconds);
   const { dashboards, defaultDashboard, warnings } = parseDashboards(raw, kargo, env);
 
-  return { kargo, refreshIntervalSeconds, decay: { thresholds }, promotion, dashboards, defaultDashboard, warnings };
+  const idlePauseSeconds = raw.idlePauseSeconds ?? 120;
+  if (!Number.isFinite(idlePauseSeconds) || idlePauseSeconds < 0) throw new Error('idlePauseSeconds must be a number >= 0 (0 disables pausing)');
+  return { kargo, refreshIntervalSeconds, idlePauseSeconds, decay: { thresholds }, promotion, dashboards, defaultDashboard, warnings };
 }
 
 export function loadConfig(path = process.env.CONFIG_PATH || './config.json', env = process.env) {

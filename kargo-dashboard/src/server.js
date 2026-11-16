@@ -17,6 +17,11 @@ export function createApp({ config, refreshAll }) {
   let latest = null; // last good bodies, per dashboard
   let active = false;
   let refreshError = null;
+  let lastSeen = Date.now(); // last time a browser asked for a summary
+
+  // Idle = nobody has asked for a summary for idlePauseSeconds; the loop then stops calling Kargo.
+  const idleMs = (config.idlePauseSeconds ?? 120) * 1000;
+  const isIdle = () => idleMs > 0 && Date.now() - lastSeen > idleMs;
 
   const currentInterval = () => (active ? config.promotion.activeRefreshIntervalSeconds : config.refreshIntervalSeconds);
 
@@ -58,6 +63,10 @@ export function createApp({ config, refreshAll }) {
   app.get('/api/summary', (req, res) => {
     const id = req.query.dashboard || config.defaultDashboard;
     if (!config.dashboards[id]) return res.status(404).json({ error: `no dashboard named ${id}` });
+    const wasIdle = isIdle();
+    lastSeen = Date.now();
+    // Data may be arbitrarily old after a pause: make the page retry shortly while the loop wakes up.
+    if (wasIdle) return res.status(503).json({ error: 'resuming after idle' });
     if (!latest || !latest[id]) return res.status(503).json({ error: 'first refresh has not completed' });
     res.json(payload(id));
   });
@@ -78,13 +87,16 @@ export function createApp({ config, refreshAll }) {
   });
   app.use(express.static(PUBLIC_DIR, { index: false }));
 
-  return { app, refresh, currentInterval };
+  return { app, refresh, currentInterval, isIdle };
 }
 
 // Chained timeouts rather than setInterval so slow refreshes never overlap, and so the delay can
 // follow the current (adaptive) interval.
-function startLoop(refresh, intervalSeconds) {
+const IDLE_CHECK_SECONDS = 2;
+function startLoop(refresh, intervalSeconds, isIdle = () => false) {
   const tick = async () => {
+    // While idle, skip Kargo entirely and re-check cheaply so the first visitor wakes it quickly.
+    if (isIdle()) return void setTimeout(tick, IDLE_CHECK_SECONDS * 1000).unref?.();
     await refresh();
     setTimeout(tick, intervalSeconds() * 1000).unref?.();
   };
@@ -109,10 +121,10 @@ async function main() {
     return { bodies, active: Boolean(active) };
   };
 
-  const { app, refresh, currentInterval } = createApp({ config, refreshAll });
+  const { app, refresh, currentInterval, isIdle } = createApp({ config, refreshAll });
   const port = Number(process.env.PORT) || 8080;
   app.listen(port, () => console.log(`kargo-dashboard listening on :${port} (${config.kargo.url})`));
-  await startLoop(refresh, currentInterval);
+  await startLoop(refresh, currentInterval, isIdle);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
