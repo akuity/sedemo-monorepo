@@ -123,3 +123,21 @@ test('aborting the signal ends a watch with an abort error rather than a KargoAp
   ac.abort(new Error('stop'));
   await assert.rejects(it.next(), (e) => !(e instanceof KargoApiError));
 });
+
+// Against a real Kargo behind a proxy, a watch started from a resourceVersion gets its headers only when the first
+// keepalive is written (up to 30s later). A watch must wait longer for headers than a list does.
+test('a watch waits for slow response headers longer than the list timeout, and still has its own limit', async () => {
+  const late = (ms) => async (url, init) => {
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      init.signal.addEventListener('abort', () => { clearTimeout(t); reject(init.signal.reason); });
+    });
+    return { status: 200, ok: true, headers: new Headers({ 'content-type': 'text/event-stream' }), body: (async function* () { yield enc.encode(': keepalive\n\n'); })() };
+  };
+  const c = (ms, watchMs) => createKargoClient({ url: 'https://k.example', fetchImpl: late(ms), timeoutMs: 20, watchConnectTimeoutMs: watchMs });
+  // headers arrive at 80ms: past the 20ms list timeout, inside the 200ms watch limit
+  assert.deepEqual(await drain(c(80, 200).watch('p', 'stages', { token: 't' })), [{ keepalive: true }]);
+  await assert.rejects(c(80, 20).listStages('p', 't'), /timed out after 20ms/);
+  // and a watch whose headers never come in time still fails with its own limit
+  await assert.rejects(drain(c(300, 50).watch('p', 'stages', { token: 't' })), /timed out after 50ms/);
+});

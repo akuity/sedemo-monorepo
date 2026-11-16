@@ -3,6 +3,11 @@
 import { parseSSE } from './sse.js';
 
 const TIMEOUT_MS = 10_000;
+// A watch with no replay (it starts from a list's resourceVersion) sends nothing until Kargo's first keepalive,
+// which is up to 30s away, and a proxy in front of Kargo may hold the response headers until then. So the wait
+// for a watch's headers must be longer than the keepalive interval. (Found against a live Kargo: 10s here made
+// every seeded watch time out and retry forever.)
+const WATCH_CONNECT_TIMEOUT_MS = 60_000;
 
 export class KargoApiError extends Error {
   constructor(message, status) {
@@ -23,13 +28,13 @@ export class KargoWatchError extends Error {
 }
 
 // `fetchImpl` is injectable for tests.
-export function createKargoClient({ url, fetchImpl = fetch, timeoutMs = TIMEOUT_MS }) {
+export function createKargoClient({ url, fetchImpl = fetch, timeoutMs = TIMEOUT_MS, watchConnectTimeoutMs = WATCH_CONNECT_TIMEOUT_MS }) {
   const base = url.replace(/\/+$/, '');
   const stats = { bytes: 0 }; // bytes received from Kargo, for the periodic log line
 
-  async function request(path, token, project, { accept, signal, countBody }) {
+  async function request(path, token, project, { accept, signal, connectMs = timeoutMs }) {
     const connect = new AbortController();
-    const timer = setTimeout(() => connect.abort(new DOMException('timeout', 'TimeoutError')), timeoutMs);
+    const timer = setTimeout(() => connect.abort(new DOMException('timeout', 'TimeoutError')), connectMs);
     const signals = [connect.signal, ...(signal ? [signal] : [])];
     let res;
     try {
@@ -39,7 +44,7 @@ export function createKargoClient({ url, fetchImpl = fetch, timeoutMs = TIMEOUT_
       });
     } catch (err) {
       const timedOut = err.name === 'TimeoutError' || connect.signal.reason?.name === 'TimeoutError' && connect.signal.aborted;
-      throw new KargoApiError(`request failed: ${timedOut ? `timed out after ${timeoutMs}ms` : err.message}`, 0);
+      throw new KargoApiError(`request failed: ${timedOut ? `timed out after ${connectMs}ms` : err.message}`, 0);
     } finally {
       clearTimeout(timer); // for a watch only the wait for response headers is bounded; the stream itself is open-ended
     }
@@ -49,7 +54,7 @@ export function createKargoClient({ url, fetchImpl = fetch, timeoutMs = TIMEOUT_
     if (!res.ok) {
       throw new KargoApiError(`Kargo API returned HTTP ${res.status} for project ${project}`, res.status);
     }
-    return { res, countBody };
+    return { res };
   }
 
   async function get(path, token, project) {
@@ -123,7 +128,7 @@ export function createKargoClient({ url, fetchImpl = fetch, timeoutMs = TIMEOUT_
       const params = [['watch', 'true'], ...query];
       if (resourceVersion) params.push(['resourceVersion', resourceVersion]);
       const qs = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-      const { res } = await request(`${projectPath(project)}/${kind}?${qs}`, token, project, { accept: 'text/event-stream', signal });
+      const { res } = await request(`${projectPath(project)}/${kind}?${qs}`, token, project, { accept: 'text/event-stream', signal, connectMs: watchConnectTimeoutMs });
       const type = res.headers?.get?.('content-type') || '';
       if (!type.startsWith('text/event-stream')) {
         try { await res.body?.cancel?.(); } catch { /* best effort */ }
