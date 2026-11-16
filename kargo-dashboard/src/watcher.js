@@ -49,6 +49,7 @@ export function createResourceWatch({
   };
 
   const sleep = (ms) => new Promise((resolve) => {
+    if (stopped) return resolve();
     const t = timers.setTimeout(() => { wake = null; resolve(); }, ms);
     wake = () => { timers.clearTimeout(t); wake = null; resolve(); };
   });
@@ -105,6 +106,7 @@ export function createResourceWatch({
       }
 
       // The stream (or the list) ended: decide how long to wait before trying again.
+      if (stopped) return;
       if (healthySince !== null && timers.now() - healthySince >= HEALTHY_MS) attempt = 0;
       setState('down', failure.message);
       if (isExpired(failure)) {
