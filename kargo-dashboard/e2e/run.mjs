@@ -1,7 +1,7 @@
 // Browser tests: `npm run test:e2e`. Needs Chrome (set CHROME_PATH if it is not at the macOS default).
 // Starts a fake Kargo API, starts the real dashboard server against it, and drives the page with Puppeteer.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -12,7 +12,6 @@ const CHROME = process.env.CHROME_PATH || ['/Applications/Google Chrome.app/Cont
 if (!CHROME) { console.error('Chrome not found; set CHROME_PATH'); process.exit(2); }
 
 const FAKE_PORT = 18091, APP_PORT = 18090, NOANIM_PORT = 18092;
-const REFRESH = 4, ACTIVE = 1; // seconds, kept small so the tests are quick
 const IMG = 'ghcr.io/akuity/sedemo-monorepo-rollouts-app';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -22,8 +21,7 @@ const check = (name, ok, detail = '') => results.push({ ok, line: `${ok ? 'ok  '
 const dir = mkdtempSync(join(tmpdir(), 'kd-e2e-'));
 const baseConfig = (extra = {}) => ({
   kargo: { url: `http://127.0.0.1:${FAKE_PORT}`, tokenEnv: 'FAKE_TOKEN' },
-  refreshIntervalSeconds: REFRESH,
-  promotion: { activeRefreshIntervalSeconds: ACTIVE, ...(extra.promotion || {}) },
+  promotion: { ...(extra.promotion || {}) },
   defaultDashboard: 'demos',
   dashboards: {
     demos: { name: 'SE Demos', projects: { 'demo-rollouts': { displayName: 'Rollouts Demo', warehouse: 'demo-rollouts' } } },
@@ -53,6 +51,8 @@ try {
   const BASE = `http://127.0.0.1:${APP_PORT}`;
   await Promise.all([waitHealthy(BASE), waitHealthy(`http://127.0.0.1:${NOANIM_PORT}`)]);
   const page = await browser.newPage();
+  let summaryRequests = 0; // the page must never poll
+  page.on('request', (r) => { if (r.url().includes('/api/summary')) summaryRequests += 1; });
   await page.setViewport({ width: 1100, height: 800 });
   const waitRows = () => page.waitForFunction(() => document.querySelectorAll('.cell').length > 1 && !document.querySelector('#rows .muted'), { timeout: 15000 });
   const labels = () => page.$$eval('.row .label', (els) => els.map((e) => e.firstChild.textContent.trim()));
@@ -89,13 +89,16 @@ try {
   // ---- promotions (PLAN 14) ----
   await page.goto(`${BASE}/`); await waitRows();
   let d = await cell('dev');
-  check('idle: nothing is promoting and the normal interval is reported', !(await page.$('.cell.promoting')) && d.anim === 'none' && (await summary()).refreshIntervalSeconds === REFRESH);
+  check('idle: nothing is promoting', !(await page.$('.cell.promoting')) && d.anim === 'none');
   const legend = await page.$eval('#legend', (e) => e.textContent);
   check('legend has Promoting and Waiting for input', legend.includes('Promoting') && legend.includes('⏸ Waiting for input'));
 
+  const t0 = Date.now();
   await fake.set('demo-rollouts', 'dev', { name: 'dev.p1', origin: 'demo-rollouts', repoURL: IMG, tag: '51-blue', currentStep: 4 });
   await fake.set('demo-rollouts', 'staging', { name: 'staging.p2', origin: 'demo-rollouts', repoURL: IMG, tag: '51-blue', currentStep: 6 });
-  await sleep((REFRESH + 1) * 1000); await page.goto(`${BASE}/`); await waitRows();
+  await page.waitForFunction(() => document.querySelectorAll('.cell.promoting').length >= 2, { timeout: 5000 });
+  const latency = Date.now() - t0;
+  check('live update: both promoting cards appear within 2s, with no page reload', latency < 2000, `${latency}ms`);
   d = await cell('dev');
   check('running: promotion blue with the 1.6s heartbeat', d.cls.includes('promoting') && !d.cls.includes('waiting') && d.bg === 'rgb(30, 111, 217)' && d.anim === 'heartbeat' && d.dur === '1.6s', JSON.stringify([d.bg, d.anim, d.dur]));
   check('running: "5 of 7: helm-template" and "50-blue → 51-blue"', d.status === '● 5 of 7: helm-template' && d.version === '50-blue → 51-blue', `${d.status} | ${d.version}`);
@@ -105,7 +108,6 @@ try {
   check('waiting: purple, slow 3s breathing, ⏸ label with the step', w.cls.includes('waiting') && w.bg === 'rgb(123, 31, 162)' && w.anim === 'breathe' && w.dur === '3s' && w.status === '⏸ Waiting for input · 7 of 7: wait-for-approval', JSON.stringify([w.bg, w.anim, w.status]));
   check('waiting: tooltip says someone must act; the step summary links to the promotion page', w.title.startsWith('Promotion is waiting for someone to act') && w.links.at(-1).endsWith('/project/demo-rollouts/promotion/staging.p2'));
   check('other cards are unaffected', !(await cell('prod')).cls.includes('promoting'));
-  check('while promoting the reported interval drops to the active value', (await summary()).refreshIntervalSeconds === ACTIVE);
 
   await page.setViewport({ width: 390, height: 900 }); await page.goto(`${BASE}/`); await waitRows();
   check('390px: no page-level horizontal scroll', (await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0);
@@ -125,18 +127,39 @@ try {
   }));
 
   await fake.set('demo-rollouts', 'dev', null); await fake.set('demo-rollouts', 'staging', null);
-  await sleep((ACTIVE + 1) * 1000);
-  check('after the promotions end the interval returns to normal', (await summary()).refreshIntervalSeconds === REFRESH);
-  await page.goto(`${BASE}/`); await waitRows();
-  check('after the promotions end no card is promoting', !(await page.$('.cell.promoting')));
+  await page.bringToFront(); // the animate=false check above opened another tab; rAF-based waits stall in a background tab
+  await page.waitForFunction(() => !document.querySelector('.cell.promoting'), { timeout: 5000 });
+  check('after the promotions end no card is promoting, again with no reload', true);
+
+  // a new Freight arrives: the "latest" cell moves and the stages fall behind, live
+  const latestVersion = () => page.$eval('.row .cell.latest .version', (e) => e.textContent.trim());
+  const before = await latestVersion();
+  const sample = structuredClone(Object.values(JSON.parse(readFileSync(new URL('../test/fixtures/demo-rollouts/freight.json', import.meta.url))).groups)[0].items[0]);
+  sample.metadata = { name: 'live-freight', creationTimestamp: '2030-01-01T00:00:00Z' };
+  sample.images = [{ repoURL: IMG, tag: '99-live' }];
+  const t1 = Date.now();
+  await fake.addFreight('demo-rollouts', sample);
+  await page.waitForFunction(() => document.querySelector('.row .cell.latest .version')?.textContent.trim() === '99-live', { timeout: 5000 });
+  check('a new Freight updates "latest" within 2s with no reload', before !== '99-live' && Date.now() - t1 < 2000, `${before} -> 99-live in ${Date.now() - t1}ms`);
+  check('and the stages are now one version behind', (await cell('dev')).title.includes('1 version behind'), (await cell('dev')).title);
 
   await fake.set('sedemo-app-demo', 'dev', { name: 'dev.p3', origin: 'sedemo-app-demo-chart', repoURL: 'x', tag: 'y', currentStep: 0 });
-  await sleep((REFRESH + 1) * 1000);
-  const teams = await (await fetch(`${BASE}/api/summary?dashboard=teams`)).json();
+  let teams;
+  for (let i = 0; i < 50; i += 1) {
+    teams = await (await fetch(`${BASE}/api/summary?dashboard=teams`)).json();
+    if (teams.rows.find((r) => r.project === 'sedemo-app-demo').lanes.some((l) => l.stages.some((c) => c.promotion))) break;
+    await sleep(100);
+  }
   const sedemo = teams.rows.find((r) => r.project === 'sedemo-app-demo').lanes;
   check('multi-warehouse: a promotion shows only in the lane whose warehouse supplied the Freight',
     sedemo.find((l) => l.warehouse === 'sedemo-app-demo').stages.find((c) => c.name === 'dev').promotion === null &&
     sedemo.find((l) => l.warehouse === 'sedemo-app-demo-chart').stages.find((c) => c.name === 'dev').promotion?.step === 1);
+  // ---- nothing polls ----
+  const stats = await fake.stats();
+  check('the browser never requested /api/summary: it only listens to the stream', summaryRequests === 0, `${summaryRequests} requests`);
+  const lists = Object.entries(stats.lists);
+  check('Kargo was listed once per stream per app instance, not on a timer', lists.length > 0 && lists.every(([, n]) => n <= 2), JSON.stringify(stats.lists));
+  check('and watched once per stream per app instance: no reconnect storm', Object.values(stats.watches).every((n) => n <= 2), JSON.stringify(stats.watches));
 } catch (err) {
   check('e2e run completed without an exception', false, err.stack || String(err));
 } finally {

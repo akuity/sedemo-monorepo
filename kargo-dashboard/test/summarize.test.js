@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildLane, buildRow, buildDashboard, selectWarehouses, kargoLink, projectLink } from '../src/summarize.js';
-import { createCollector } from '../src/collector.js';
+import { createStore } from '../src/store.js';
 import { KargoApiError } from '../src/kargo-client.js';
 import { DEFAULT_THRESHOLDS as T } from '../src/config.js';
 import { sortFreight } from '../src/decay.js';
@@ -122,7 +122,37 @@ function fakeClient(tokensSeen = []) {
   };
 }
 
-// Runs the real collector against a fake client, then builds one project's row (pure).
+// Runs the real store (seeded by lists, no watch events) against an old-style fake client and returns what the
+// polling collector used to: { snapshots, active }. The fake watch just stays open until aborted.
+async function collectViaStore(oldClient, config, env) {
+  const warehouses = new Map(); // one old-client listWarehouses call per project, like the store makes
+  const whFor = (p, t) => { if (!warehouses.has(p)) warehouses.set(p, oldClient.listWarehouses(p, t)); return warehouses.get(p); };
+  const client = {
+    async listWarehouses(p, t) { return { items: await whFor(p, t), resourceVersion: '1' }; },
+    async listStages(p, t) { return { items: await oldClient.listStages(p, t), resourceVersion: '1' }; },
+    async listFreight(p, { origins }, t) {
+      const names = origins.length ? origins : (await whFor(p, t)).map((w) => w.metadata.name);
+      return { items: (await Promise.all(names.map((n) => oldClient.listFreight(p, n, t)))).flat(), resourceVersion: '1' };
+    },
+    getPromotion: (...a) => oldClient.getPromotion(...a),
+    async* watch(p, kind, { signal }) { await new Promise((r) => signal.addEventListener('abort', r)); },
+  };
+  const store = createStore({ config, client, env }).start();
+  for (let i = 0; i < 100 && !store.status().ready; i += 1) await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); // let promotion fetches land
+  const out = { snapshots: store.snapshots(), active: store.status().active };
+  await store.stop();
+  return out;
+}
+const createCollector = ({ client }) => ({
+  collect: (config, env) => collectViaStore(client, config, env),
+  async collectProject(name, wanted, token) {
+    const config = { dashboards: { x: { id: 'x', name: 'x', projects: { [name]: { warehouses: wanted.all ? [] : [...wanted.names], tokenEnv: 'T' } } } } };
+    return (await collectViaStore(client, config, { T: token })).snapshots.get(name);
+  },
+});
+
+// Runs the real store against a fake client, then builds one project's row (pure).
 const wantedOf = (pc) => ({ tokenEnv: 'T', all: !(pc.warehouses?.length), names: new Set(pc.warehouses || []) });
 async function runProject(client, name, projectConfig, ctxExtra = {}) {
   const snapshot = await createCollector({ client }).collectProject(name, wantedOf(projectConfig), 't');
@@ -251,7 +281,9 @@ test('an unknown warehouse name is a lane error; the other lanes still render', 
   assert.equal(r.lanes[1].latest.version, '15');
 });
 
-test('a freight fetch failure in one lane does not affect the other', async () => {
+// PLAN 17: freight is one list (and one watch) per project, so a freight failure shows in every lane of
+// that project, while the project row and its stages still render. (Polling fetched each warehouse separately.)
+test('a freight failure shows in the project\'s lanes without turning the project into an error row', async () => {
   const client = fakeClient();
   const real = client.listFreight;
   client.listFreight = async (p, wh, t) => {
@@ -260,9 +292,11 @@ test('a freight fetch failure in one lane does not affect the other', async () =
   };
   const r = await project('sedemo-app-demo', { warehouses: [], plural: false }, client);
   assert.equal(r.error, null);
-  assert.equal(r.lanes[0].error, null);
-  assert.match(r.lanes[1].error, /HTTP 500/);
-  assert.deepEqual(r.lanes[1].stages, []);
+  assert.equal(r.lanes.length, 2);
+  for (const lane of r.lanes) {
+    assert.match(lane.error, /HTTP 500/);
+    assert.deepEqual(lane.stages, []);
+  }
 });
 
 test('project-level failures stay a single error row with no lanes', async () => {

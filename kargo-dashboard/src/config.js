@@ -80,14 +80,13 @@ export const DEFAULT_PROMOTION = {
   // Steps that block on a person: any `wait-for` step, plus the get-user-input form step.
   waitingStepPattern: 'wait-for|^get-user-input$',
   animate: true,
-  activeRefreshIntervalSeconds: 5,
 };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const DASHBOARD_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 // Section 14.4. Returns the promotion settings with defaults applied.
-function parsePromotion(raw = {}, refreshIntervalSeconds) {
+function parsePromotion(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('promotion must be an object');
   const p = { ...DEFAULT_PROMOTION, ...raw };
   for (const k of ['color', 'waitingColor']) {
@@ -99,10 +98,6 @@ function parsePromotion(raw = {}, refreshIntervalSeconds) {
     throw new Error(`promotion.waitingStepPattern is not a valid regex: ${err.message}`);
   }
   if (typeof p.animate !== 'boolean') throw new Error('promotion.animate must be true or false');
-  const a = p.activeRefreshIntervalSeconds;
-  if (!Number.isInteger(a) || a < 1 || a > refreshIntervalSeconds) {
-    throw new Error('promotion.activeRefreshIntervalSeconds must be an integer between 1 and refreshIntervalSeconds');
-  }
   return p;
 }
 
@@ -206,17 +201,22 @@ export function validateConfig(raw, env = process.env) {
   const thresholds = raw.decay?.thresholds ?? DEFAULT_THRESHOLDS;
   validateThresholds(thresholds);
 
-  const refreshIntervalSeconds = raw.refreshIntervalSeconds ?? 30;
-  if (!Number.isFinite(refreshIntervalSeconds) || refreshIntervalSeconds < 1) {
-    throw new Error('refreshIntervalSeconds must be a number >= 1');
+  // The page is updated from Kargo watch events (PLAN section 17), so nothing polls any more. The old
+  // polling settings are still accepted so an existing config keeps starting, but they do nothing.
+  const deprecated = [];
+  for (const key of ['refreshIntervalSeconds', 'idlePauseSeconds']) {
+    if (raw[key] !== undefined) deprecated.push(key);
+  }
+  const rawPromotion = raw.promotion && typeof raw.promotion === 'object' && !Array.isArray(raw.promotion) ? { ...raw.promotion } : raw.promotion;
+  if (rawPromotion && typeof rawPromotion === 'object' && rawPromotion.activeRefreshIntervalSeconds !== undefined) {
+    deprecated.push('promotion.activeRefreshIntervalSeconds');
+    delete rawPromotion.activeRefreshIntervalSeconds;
   }
 
-  const promotion = parsePromotion(raw.promotion, refreshIntervalSeconds);
+  const promotion = parsePromotion(rawPromotion);
   const { dashboards, defaultDashboard, warnings } = parseDashboards(raw, kargo, env);
-
-  const idlePauseSeconds = raw.idlePauseSeconds ?? 120;
-  if (!Number.isFinite(idlePauseSeconds) || idlePauseSeconds < 0) throw new Error('idlePauseSeconds must be a number >= 0 (0 disables pausing)');
-  return { kargo, refreshIntervalSeconds, idlePauseSeconds, decay: { thresholds }, promotion, dashboards, defaultDashboard, warnings };
+  for (const key of deprecated) warnings.push(`${key} is deprecated and ignored: the dashboard now updates from Kargo watch events instead of polling`);
+  return { kargo, decay: { thresholds }, promotion, dashboards, defaultDashboard, warnings };
 }
 
 export function loadConfig(path = process.env.CONFIG_PATH || './config.json', env = process.env) {
